@@ -101,7 +101,6 @@ app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`))
 // ... твои API роуты (app.get, app.post и т.д.) ...
 
 // Раздача статики React-приложения (Фронтенд)
-const __dirname = path.resolve();
 app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
 // Любой неизвестный роут отправляем на index.html (нужно для React Router)
