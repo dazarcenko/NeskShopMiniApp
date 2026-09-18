@@ -108,7 +108,8 @@ bot.start((ctx) => {
 });
 
 // --- ЗАПУСК ---
-app.listen(PORT, '0.0.0.0' () => {
+// --- ЗАПУСК ---
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Сервер запущен на порту ${PORT}`);
   bot.launch().then(() => console.log('[BOT] Бот успешно запущен')).catch(err => console.error('[BOT] Ошибка запуска:', err));
 });
