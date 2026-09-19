@@ -41,7 +41,6 @@ export default function CatalogPage() {
     }
   };
 
-  // Фильтрация товаров по составной строке, например "Жидкости | 50 мг"
   const finalTargetCategory = activeSubCat ? `${activeMainCat?.name} | ${activeSubCat}` : activeMainCat?.name;
   const filteredProducts = products.filter(p => p.category === finalTargetCategory);
 
@@ -65,36 +64,52 @@ export default function CatalogPage() {
   };
 
   return (
-    <div>
-      <div className="flex items-center mb-6">
-        {view !== 'main' && (
-          <button onClick={handleBack} className="mr-3 bg-[#1a1a1a] p-2 rounded-lg text-white border border-gray-800">⬅ Назад</button>
-        )}
-        <h2 className="text-xl font-bold text-white border-l-4 border-[#FFD700] pl-2">
-          {view === 'main' ? 'Каталог' : view === 'sub' ? activeMainCat.name : activeSubCat || activeMainCat.name}
-        </h2>
-      </div>
+    <div className="px-4 pt-4">
+      
+      {/* КРАСИВЫЙ БАННЕР НА ГЛАВНОЙ */}
+      {view === 'main' ? (
+        <div className="mb-6 p-5 rounded-2xl bg-gradient-to-br from-[#1a1a1a] to-black border border-gray-800 shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative overflow-hidden">
+          {/* Легкое свечение на фоне */}
+          <div className="absolute -top-10 -right-10 w-40 h-40 bg-[#FFD700] opacity-10 rounded-full blur-3xl"></div>
+          
+          <h1 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 relative z-10">
+            Выберите <span className="text-[#FFD700]">категорию</span>
+          </h1>
+          <p className="text-sm text-gray-500 mt-1 relative z-10">Откройте для себя наш ассортимент</p>
+        </div>
+      ) : (
+        <div className="flex items-center mb-6 mt-2">
+          <button onClick={handleBack} className="mr-3 bg-[#1a1a1a] p-2 rounded-xl text-white border border-gray-800 hover:bg-gray-800 transition active:scale-95">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+          </button>
+          <h2 className="text-xl font-bold text-white">
+            {view === 'sub' ? activeMainCat.name : activeSubCat || activeMainCat.name}
+          </h2>
+        </div>
+      )}
 
       {/* ШАГ 1: ГЛАВНЫЕ КАТЕГОРИИ */}
       {view === 'main' && (
-        <div className="grid grid-cols-2 gap-4 mb-10">
+        <div className="grid grid-cols-2 gap-4 mb-4">
           {categories.map(c => (
-            <div key={c.id} onClick={() => handleCategoryClick(c)} className="relative h-36 rounded-xl overflow-hidden shadow-lg border border-gray-800 active:scale-95 transition-transform cursor-pointer">
+            <div key={c.id} onClick={() => handleCategoryClick(c)} className="relative h-40 rounded-2xl overflow-hidden shadow-lg border border-gray-800 active:scale-95 transition-transform cursor-pointer">
               <img src={c.image} alt={c.name} className="absolute inset-0 w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-2 text-center">
-                <span className="text-[#FFD700] font-bold text-lg drop-shadow-lg">{c.name}</span>
+              {/* Градиент поверх картинки, чтобы текст всегда хорошо читался */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-end justify-center pb-4">
+                <span className="text-[#FFD700] font-bold text-lg drop-shadow-md">{c.name}</span>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* ШАГ 2: ПОДКАТЕГОРИИ (Например: 20 мг, 50 мг) */}
+      {/* ШАГ 2: ПОДКАТЕГОРИИ */}
       {view === 'sub' && (
-        <div className="flex flex-col gap-3 mb-10">
+        <div className="flex flex-col gap-3">
           {activeMainCat.subcategories.map(sub => (
-            <button key={sub} onClick={() => handleSubClick(sub)} className="bg-[#1a1a1a] p-4 rounded-xl border border-gray-800 text-[#FFD700] font-bold text-lg active:bg-black transition-colors text-left pl-5">
+            <button key={sub} onClick={() => handleSubClick(sub)} className="bg-[#1a1a1a] p-5 rounded-2xl border border-gray-800 text-[#FFD700] font-bold text-lg active:scale-[0.98] transition-all text-left flex justify-between items-center shadow-md">
               {sub}
+              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
           ))}
         </div>
@@ -103,11 +118,11 @@ export default function CatalogPage() {
       {/* ШАГ 3: ТОВАРЫ */}
       {view === 'products' && (
         filteredProducts.length === 0 ? (
-          <div className="text-center text-gray-500 mt-10 font-medium">В этом разделе пока нет товаров</div>
+          <div className="text-center text-gray-500 mt-16 font-medium">В этом разделе пока нет товаров</div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 mb-10">
+          <div className="grid grid-cols-2 gap-3">
             {filteredProducts.map(p => (
-              <div key={p.id} className="bg-[#1a1a1a] rounded-xl overflow-hidden shadow-lg flex flex-col border border-gray-800 relative">
+              <div key={p.id} className="bg-[#1a1a1a] rounded-2xl overflow-hidden shadow-lg flex flex-col border border-gray-800 relative">
                 {isAdmin && (
                   <div className="absolute top-2 left-2 flex gap-1 z-10">
                     <button onClick={() => handleDelete(p.id)} className="bg-red-600/90 text-white p-1.5 rounded-lg text-sm">🗑️</button>
@@ -120,7 +135,7 @@ export default function CatalogPage() {
                   <h3 className="text-sm font-semibold text-white leading-tight mb-1">{p.title}</h3>
                   <p className="text-xs text-gray-400 mb-2 line-clamp-2 flex-grow">{p.description}</p>
                   <p className="text-[#FFD700] font-bold mb-2 text-lg">{p.price} ₽</p>
-                  <button onClick={() => addToCart(p)} className="w-full bg-[#FFD700] text-black font-bold py-2 rounded-lg active:bg-yellow-600">В корзину</button>
+                  <button onClick={() => addToCart(p)} className="w-full bg-[#FFD700] text-black font-bold py-2.5 rounded-xl active:bg-yellow-600 transition-colors">В корзину</button>
                 </div>
               </div>
             ))}
