@@ -34,21 +34,16 @@ app.use(express.json());
 app.use('/uploads', express.static(uploadDir));
 app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
-app.get('/api/categories', (req, res) => {
-  const cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
-  res.json(cats);
-});
+// --- API КАТЕГОРИЙ ---
+app.get('/api/categories', (req, res) => res.json(JSON.parse(fs.readFileSync(categoriesFile, 'utf8'))));
 
 app.post('/api/admin/categories', upload.single('image'), (req, res) => {
-  const tgId = req.headers['x-telegram-id'];
-  if (String(tgId) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
-  const { name, subcategories } = req.body;
-  const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
+  if (String(req.headers['x-telegram-id']) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   const newCat = {
-    id: Date.now().toString(), name,
-    image: imageUrl || 'https://via.placeholder.com/400/1a1a1a/FFD700?text=' + name,
-    subcategories: subcategories ? subcategories.split(',').map(s => s.trim()).filter(s => s) : []
+    id: Date.now().toString(), name: req.body.name,
+    image: req.file ? `/uploads/${req.file.filename}` : 'https://via.placeholder.com/400/1a1a1a/FFD700?text=' + req.body.name,
+    subcategories: req.body.subcategories ? req.body.subcategories.split(',').map(s => s.trim()).filter(s => s) : []
   };
   cats.push(newCat);
   fs.writeFileSync(categoriesFile, JSON.stringify(cats, null, 2));
@@ -56,33 +51,22 @@ app.post('/api/admin/categories', upload.single('image'), (req, res) => {
 });
 
 app.delete('/api/admin/categories/:id', (req, res) => {
-  const tgId = req.headers['x-telegram-id'];
-  if (String(tgId) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
+  if (String(req.headers['x-telegram-id']) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
-  cats = cats.filter(c => c.id !== req.params.id);
-  fs.writeFileSync(categoriesFile, JSON.stringify(cats, null, 2));
+  fs.writeFileSync(categoriesFile, JSON.stringify(cats.filter(c => c.id !== req.params.id), null, 2));
   res.json({ success: true });
 });
 
-app.get('/api/products', async (req, res) => {
-  const products = await prisma.product.findMany();
-  res.json(products);
-});
+// --- API ТОВАРОВ ---
+app.get('/api/products', async (req, res) => res.json(await prisma.product.findMany()));
 
 app.post('/api/admin/products', upload.single('image'), async (req, res) => {
   try {
-    const tgId = req.headers['x-telegram-id'];
-    if (String(tgId) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
-    
-    // ДОБАВИЛИ oldPrice (Старую цену)
+    if (String(req.headers['x-telegram-id']) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
     const { title, price, category, description, flavors, oldPrice } = req.body;
-    const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
-    
-    // Склеиваем всё в одну строку для базы
     const finalDesc = `${description || ''}|||${flavors || ''}|||${oldPrice || ''}`;
-
     const product = await prisma.product.create({
-      data: { title, price: Number(price), category, description: finalDesc, imageUrl: imageUrl || '' }
+      data: { title, price: Number(price), category, description: finalDesc, imageUrl: req.file ? `/uploads/${req.file.filename}` : '' }
     });
     res.json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -90,19 +74,58 @@ app.post('/api/admin/products', upload.single('image'), async (req, res) => {
 
 app.delete('/api/admin/products/:id', async (req, res) => {
   try {
-    const tgId = req.headers['x-telegram-id'];
-    if (String(tgId) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
-    await prisma.product.delete({
-      where: { id: isNaN(Number(req.params.id)) ? req.params.id : Number(req.params.id) }
-    });
+    if (String(req.headers['x-telegram-id']) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
+    await prisma.product.delete({ where: { id: isNaN(Number(req.params.id)) ? req.params.id : Number(req.params.id) } });
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- API ОФОРМЛЕНИЯ ЗАКАЗА ---
+app.post('/api/orders', async (req, res) => {
+  try {
+    const { items, totalAmount, buyerName, deliveryMethod, deliveryAddress, note, username } = req.body;
+    const ADMIN_ID = '1044141986';
+    const BOT_TOKEN = process.env.bot_token || process.env.BOT_TOKEN;
+    
+    if (!BOT_TOKEN) return res.status(500).json({ error: 'Токен бота не настроен' });
+
+    // Формируем список товаров для сообщения
+    const itemsText = items.map(item => `▪️ ${item.title} (x${item.quantity}) — ${item.price * item.quantity} ₽`).join('\n');
+    
+    // Красивое сообщение в Telegram админу
+    const message = `
+🚨 <b>НОВЫЙ ЗАКАЗ!</b>
+
+👤 <b>Имя:</b> ${buyerName}
+💬 <b>Связь:</b> ${username ? '@' + username : 'Скрыт/Нет юзернейма'}
+🚚 <b>Способ:</b> ${deliveryMethod}
+${deliveryAddress ? `📍 <b>Адрес:</b> ${deliveryAddress}\n` : ''}📝 <b>Примечание:</b> ${note || 'Нет'}
+
+📦 <b>Товары:</b>
+${itemsText}
+
+💰 <b>Сумма к оплате:</b> ${totalAmount} ₽
+`;
+
+    // Отправляем сообщение тебе
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: ADMIN_ID, text: message, parse_mode: 'HTML' })
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// SPA fallback
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'frontend/dist', 'index.html')));
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server on port ${PORT}`));
 
+// --- БОТ ---
 const BOT_TOKEN = process.env.bot_token || process.env.BOT_TOKEN; 
 const WEB_APP_URL = 'https://neskshopminiapp-production.up.railway.app';
 let lastUpdateId = 0;
