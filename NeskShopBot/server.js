@@ -12,7 +12,7 @@ const app = express();
 const prisma = new PrismaClient();
 
 // ⚠️ СПИСОК АДМИНИСТРАТОРОВ (Добавь второй ID в кавычках)
-const ADMIN_IDS = ['1044141986', 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА'];
+const ADMIN_IDS = ['1044141986', '1067205524'];
 
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
