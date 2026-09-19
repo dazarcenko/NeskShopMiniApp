@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-do
 import CatalogPage from './pages/CatalogPage';
 import CartPage from './pages/CartPage';
 import AdminPage from './pages/AdminPage';
+import ProfilePage from './pages/ProfilePage';
 
 // Заглушки для пустых страниц
 const ProfilePage = () => <div className="p-4 text-center text-gray-400 mt-20 font-medium">Личный кабинет в разработке 👤</div>;
