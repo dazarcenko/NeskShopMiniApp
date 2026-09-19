@@ -4,6 +4,7 @@ import CatalogPage from './pages/CatalogPage';
 import CartPage from './pages/CartPage';
 import AdminPage from './pages/AdminPage';
 
+// Заглушки для пустых страниц
 const ProfilePage = () => <div className="p-4 text-center text-gray-400 mt-20 font-medium">Личный кабинет в разработке 👤</div>;
 
 function Navigation() {
@@ -30,10 +31,10 @@ function Navigation() {
 
       <main className="flex-1 pb-28">
         <Routes>
-          {/* Один компонент CatalogPage обслуживает три разные страницы, меняя режим */}
-          <Route path="/" element={<CatalogPage mode="catalog" />} />
-          <Route path="/discounts" element={<CatalogPage mode="discounts" />} />
-          <Route path="/favorites" element={<CatalogPage mode="favorites" />} />
+          {/* ИСПРАВЛЕНИЕ ЗДЕСЬ: Добавлены свойства key. Теперь страницы не будут конфликтовать! */}
+          <Route path="/" element={<CatalogPage key="catalog" mode="catalog" />} />
+          <Route path="/discounts" element={<CatalogPage key="discounts" mode="discounts" />} />
+          <Route path="/favorites" element={<CatalogPage key="favorites" mode="favorites" />} />
           
           <Route path="/cart" element={<CartPage />} />
           <Route path="/profile" element={<ProfilePage />} />
