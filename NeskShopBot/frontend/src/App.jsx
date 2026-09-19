@@ -13,7 +13,7 @@ function Navigation() {
   const tg = window.Telegram?.WebApp;
   const userId = String(tg?.initDataUnsafe?.user?.id);
   
-  // ⚠️ СПИСОК АДМИНИСТРАТОРОВ ФРОНТЕНД
+  // ⚠️ ВПИШИ ОБА ID СЮДА
   const ADMIN_IDS = ['1044141986', '1067205524'];
   const hasAdminAccess = ADMIN_IDS.includes(userId);
 
@@ -37,7 +37,9 @@ function Navigation() {
           <Route path="/favorites" element={<CatalogPage key="favorites" mode="favorites" />} />
           <Route path="/cart" element={<CartPage />} />
           <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          
+          {/* Надежно скрываем саму страницу админки от чужих */}
+          {hasAdminAccess && <Route path="/admin" element={<AdminPage />} />}
         </Routes>
       </main>
 
