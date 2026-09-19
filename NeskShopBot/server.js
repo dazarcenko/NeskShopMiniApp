@@ -12,6 +12,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const prisma = new PrismaClient();
 
+// ОБА АДМИНА УЖЕ ВШИТЫ В КОД
 const ADMIN_IDS = ['1044141986', '1067205524'];
 const BOT_TOKEN = process.env.bot_token || process.env.BOT_TOKEN;
 
@@ -42,7 +43,6 @@ const adminOnly = (req, res, next) => {
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-// Инициализация файлов данных
 const categoriesFile = path.join(uploadDir, 'categories.json');
 if (!fs.existsSync(categoriesFile)) fs.writeFileSync(categoriesFile, JSON.stringify([]));
 
@@ -71,6 +71,7 @@ app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
 // --- КАТЕГОРИИ ---
 app.get('/api/categories', (req, res) => res.json(JSON.parse(fs.readFileSync(categoriesFile, 'utf8'))));
+
 app.post('/api/admin/categories', adminOnly, upload.single('image'), (req, res) => {
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   const newCat = {
@@ -82,16 +83,43 @@ app.post('/api/admin/categories', adminOnly, upload.single('image'), (req, res) 
   fs.writeFileSync(categoriesFile, JSON.stringify(cats, null, 2));
   res.json(newCat);
 });
-app.put('/api/admin/categories/:id', adminOnly, upload.single('image'), (req, res) => {
+
+// ОБНОВЛЕНО: Умное редактирование категории с переносом товаров
+app.put('/api/admin/categories/:id', adminOnly, upload.single('image'), async (req, res) => {
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   const index = cats.findIndex(c => c.id === req.params.id);
   if (index === -1) return res.status(404).json({ error: 'Не найдено' });
-  cats[index].name = req.body.name || cats[index].name;
-  if (req.body.subcategories !== undefined) cats[index].subcategories = req.body.subcategories ? req.body.subcategories.split(',').map(s => s.trim()).filter(s => s) : [];
+
+  const oldName = cats[index].name;
+  const newName = req.body.name || cats[index].name;
+
+  cats[index].name = newName;
+  if (req.body.subcategories !== undefined) {
+    cats[index].subcategories = req.body.subcategories ? req.body.subcategories.split(',').map(s => s.trim()).filter(s => s) : [];
+  }
   if (req.file) cats[index].image = `/uploads/${req.file.filename}`;
+  
   fs.writeFileSync(categoriesFile, JSON.stringify(cats, null, 2));
+
+  // Если имя изменилось, перепривязываем все товары
+  if (oldName !== newName) {
+    const allProducts = await prisma.product.findMany();
+    for (const p of allProducts) {
+      const parts = (p.category || '').split(' | ');
+      if (parts[0] === oldName) {
+        // Сохраняем старую подкатегорию (если была)
+        const finalCat = parts[1] ? `${newName} | ${parts[1]}` : newName;
+        await prisma.product.update({
+          where: { id: p.id },
+          data: { category: finalCat }
+        });
+      }
+    }
+  }
+
   res.json(cats[index]);
 });
+
 app.delete('/api/admin/categories/:id', adminOnly, (req, res) => {
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   fs.writeFileSync(categoriesFile, JSON.stringify(cats.filter(c => c.id !== req.params.id), null, 2));
@@ -100,6 +128,7 @@ app.delete('/api/admin/categories/:id', adminOnly, (req, res) => {
 
 // --- ТОВАРЫ ---
 app.get('/api/products', async (req, res) => res.json(await prisma.product.findMany()));
+
 app.post('/api/admin/products', adminOnly, upload.single('image'), async (req, res) => {
   try {
     const { title, price, category, description, flavors, oldPrice } = req.body;
@@ -109,6 +138,7 @@ app.post('/api/admin/products', adminOnly, upload.single('image'), async (req, r
     res.json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
 app.put('/api/admin/products/:id', adminOnly, upload.single('image'), async (req, res) => {
   try {
     const { title, price, category, description, flavors, oldPrice } = req.body;
@@ -121,6 +151,7 @@ app.put('/api/admin/products/:id', adminOnly, upload.single('image'), async (req
     res.json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
 app.delete('/api/admin/products/:id', adminOnly, async (req, res) => {
   try {
     await prisma.product.delete({ where: { id: isNaN(Number(req.params.id)) ? req.params.id : Number(req.params.id) } });
@@ -150,7 +181,7 @@ app.post('/api/reviews', (req, res) => {
   
   reviews[productId].push(newReview);
   fs.writeFileSync(reviewsFile, JSON.stringify(reviews, null, 2));
-  res.json(reviews[productId]); // Возвращаем обновленный массив отзывов для этого товара
+  res.json(reviews[productId]);
 });
 
 app.post('/api/admin/pin/:id', adminOnly, (req, res) => {
@@ -174,8 +205,10 @@ app.post('/api/orders', async (req, res) => {
     if (!BOT_TOKEN) return res.status(500).json({ error: 'Токен бота не настроен' });
     const itemsText = items.map(item => `▪️ ${item.title} (x${item.quantity}) — ${item.price * item.quantity} ₽`).join('\n');
     const message = `🚨 <b>НОВЫЙ ЗАКАЗ!</b>\n\n👤 <b>Имя:</b> ${buyerName}\n💬 <b>Связь:</b> ${username ? '@' + username : 'Скрыт/Нет юзернейма'}\n🚚 <b>Способ:</b> ${deliveryMethod}\n${deliveryAddress ? `📍 <b>Адрес:</b> ${deliveryAddress}\n` : ''}📝 <b>Примечание:</b> ${note || 'Нет'}\n\n📦 <b>Товары:</b>\n${itemsText}\n\n💰 <b>Сумма к оплате:</b> ${totalAmount} ₽`;
+    
+    // Рассылаем всем админам
     for (const adminId of ADMIN_IDS) {
-      if (adminId && adminId !== 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА') {
+      if (adminId) {
         fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: adminId, text: message, parse_mode: 'HTML' }) }).catch(() => {});
       }
     }
