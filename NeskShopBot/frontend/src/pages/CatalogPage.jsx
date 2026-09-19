@@ -12,11 +12,16 @@ export default function CatalogPage({ mode = 'catalog' }) {
   const [activeProduct, setActiveProduct] = useState(null);
   const [selectedFlavor, setSelectedFlavor] = useState(null);
 
+  // Состояния для редактирования товара
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [editForm, setEditForm] = useState({ title: '', price: '', oldPrice: '', mainCat: '', subCat: '', description: '', flavors: '' });
+  const [editImage, setEditImage] = useState(null);
+
   const tg = window.Telegram?.WebApp;
   const userId = String(tg?.initDataUnsafe?.user?.id);
+  const initData = tg?.initData;
   
-  // ⚠️ СПИСОК АДМИНИСТРАТОРОВ (Здесь тоже впиши)
-  const ADMIN_IDS = ['1044141986', '1067205524'];
+  const ADMIN_IDS = ['1044141986', 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА'];
   const isAdmin = ADMIN_IDS.includes(userId);
 
   useEffect(() => {
@@ -100,14 +105,53 @@ export default function CatalogPage({ mode = 'catalog' }) {
     e.stopPropagation();
     if (!window.confirm('Точно удалить?')) return;
     try {
-      const initData = tg?.initData; // ДАННЫЕ ДЛЯ БЕЗОПАСНОСТИ
       await axios.delete(`/api/admin/products/${id}`, { 
         headers: { 'x-telegram-id': userId, 'x-tg-init-data': initData } 
       });
       setProducts(products.filter(p => p.id !== id));
     } catch (err) { alert(err.response?.data?.error || 'Ошибка'); }
   };
-  
+
+  // ФУНКЦИИ РЕДАКТИРОВАНИЯ ТОВАРА
+  const openEditModal = (p, e) => {
+    e.stopPropagation();
+    const [desc, flavs, oldPrice] = (p.description || '').split('|||');
+    const [mainCat, subCat] = (p.category || '').split(' | ');
+    
+    setEditForm({
+      title: p.title, price: p.price, oldPrice: oldPrice || '',
+      mainCat: mainCat || '', subCat: subCat || '',
+      description: desc || '', flavors: flavs || ''
+    });
+    setEditingProduct(p);
+    setEditImage(null);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    const finalCategory = editForm.subCat ? `${editForm.mainCat} | ${editForm.subCat}` : editForm.mainCat;
+    
+    const data = new FormData();
+    data.append('title', editForm.title);
+    data.append('price', editForm.price);
+    data.append('oldPrice', editForm.oldPrice);
+    data.append('category', finalCategory);
+    data.append('description', editForm.description);
+    data.append('flavors', editForm.flavors);
+    if (editImage) data.append('image', editImage);
+
+    try {
+      const res = await axios.put(`/api/admin/products/${editingProduct.id}`, data, {
+        headers: { 'x-telegram-id': userId, 'x-tg-init-data': initData }
+      });
+      setProducts(products.map(p => p.id === editingProduct.id ? res.data : p));
+      setEditingProduct(null);
+      if (tg?.showAlert) tg.showAlert('Товар успешно обновлен!');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Ошибка');
+    }
+  };
+
   const getEmptyText = () => {
     if (mode === 'discounts') return "Скидок пока нет, но они скоро появятся! 🎁";
     if (mode === 'favorites') return "В избранном пока пусто ❤️";
@@ -164,7 +208,7 @@ export default function CatalogPage({ mode = 'catalog' }) {
         displayProducts.length === 0 ? (
           <div className="text-center text-gray-500 mt-16 font-medium px-4">{getEmptyText()}</div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 mb-10">
             {displayProducts.map(p => {
                const [desc, flavs, oldPrice] = (p.description || '').split('|||');
                const isFav = favorites.includes(p.id);
@@ -177,9 +221,11 @@ export default function CatalogPage({ mode = 'catalog' }) {
                     </button>
                   </div>
 
+                  {/* КНОПКИ РЕДАКТИРОВАНИЯ И УДАЛЕНИЯ ДЛЯ АДМИНА */}
                   {isAdmin && (
-                    <div className="absolute top-2 left-2 z-10">
-                      <button onClick={(e) => handleDelete(p.id, e)} className="bg-red-600/90 text-white p-1.5 rounded-lg text-sm">🗑️</button>
+                    <div className="absolute top-2 left-2 flex gap-1 z-10">
+                      <button onClick={(e) => openEditModal(p, e)} className="bg-blue-600/90 text-white p-1.5 rounded-lg text-sm shadow-md">✏️</button>
+                      <button onClick={(e) => handleDelete(p.id, e)} className="bg-red-600/90 text-white p-1.5 rounded-lg text-sm shadow-md">🗑️</button>
                     </div>
                   )}
                   
@@ -265,6 +311,49 @@ export default function CatalogPage({ mode = 'catalog' }) {
           </div>
         );
       })()}
+
+      {/* МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ТОВАРА */}
+      {editingProduct && (
+        <div className="fixed inset-0 bg-black/95 z-[60] flex justify-center items-center p-4 overflow-y-auto">
+          <div className="bg-[#1a1a1a] p-5 rounded-2xl border border-gray-800 w-full max-w-sm my-auto shadow-2xl">
+            <h2 className="text-xl font-bold text-[#FFD700] mb-4">Редактировать товар</h2>
+            <form onSubmit={handleEditSubmit} className="flex flex-col gap-3">
+              <input type="text" placeholder="Название" required value={editForm.title} onChange={e => setEditForm({...editForm, title: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
+              
+              <div className="flex gap-2">
+                <input type="number" placeholder="Новая цена" required value={editForm.price} onChange={e => setEditForm({...editForm, price: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
+                <input type="number" placeholder="Старая цена" value={editForm.oldPrice} onChange={e => setEditForm({...editForm, oldPrice: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
+              </div>
+
+              <select value={editForm.mainCat} onChange={e => {
+                const cat = categories.find(c => c.name === e.target.value);
+                setEditForm({...editForm, mainCat: e.target.value, subCat: cat?.subcategories?.[0] || ''});
+              }} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]">
+                {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+              </select>
+              
+              {categories.find(c => c.name === editForm.mainCat)?.subcategories?.length > 0 && (
+                <select value={editForm.subCat} onChange={e => setEditForm({...editForm, subCat: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]">
+                  {categories.find(c => c.name === editForm.mainCat)?.subcategories.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              )}
+
+              <input type="text" placeholder="Вкусы через запятую" value={editForm.flavors} onChange={e => setEditForm({...editForm, flavors: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
+              <textarea placeholder="Описание" value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white min-h-[80px] outline-none focus:border-[#FFD700]"/>
+              
+              <div className="bg-black border border-gray-700 rounded-lg p-3">
+                <label className="text-xs text-gray-400 block mb-1">Новое фото (необязательно):</label>
+                <input type="file" accept="image/jpeg, image/png, image/webp" onChange={e => setEditImage(e.target.files[0])} className="text-xs text-gray-400 file:mr-2 file:py-1 file:px-3 file:rounded-full file:border-0 file:bg-[#FFD700] file:text-black file:font-bold"/>
+              </div>
+              
+              <div className="flex gap-2 mt-2">
+                <button type="submit" className="flex-1 bg-[#FFD700] text-black font-bold py-3 rounded-lg">Сохранить</button>
+                <button type="button" onClick={() => setEditingProduct(null)} className="flex-1 bg-gray-800 text-white font-bold py-3 rounded-lg">Отмена</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
