@@ -12,16 +12,15 @@ export default function CatalogPage({ mode = 'catalog' }) {
   const [activeProduct, setActiveProduct] = useState(null);
   const [selectedFlavor, setSelectedFlavor] = useState(null);
 
-  // Состояния для редактирования товара
   const [editingProduct, setEditingProduct] = useState(null);
   const [editForm, setEditForm] = useState({ title: '', price: '', oldPrice: '', mainCat: '', subCat: '', description: '', flavors: '' });
   const [editImage, setEditImage] = useState(null);
 
   const tg = window.Telegram?.WebApp;
   const userId = String(tg?.initDataUnsafe?.user?.id);
-  const initData = tg?.initData;
   
-  const ADMIN_IDS = ['1044141986', 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА'];
+  // ⚠️ ВПИШИ ОБА ID СЮДА
+  const ADMIN_IDS = ['1044141986', '1067205524'];
   const isAdmin = ADMIN_IDS.includes(userId);
 
   useEffect(() => {
@@ -105,14 +104,14 @@ export default function CatalogPage({ mode = 'catalog' }) {
     e.stopPropagation();
     if (!window.confirm('Точно удалить?')) return;
     try {
+      // Отправляем ID текущего пользователя
       await axios.delete(`/api/admin/products/${id}`, { 
-        headers: { 'x-telegram-id': userId, 'x-tg-init-data': initData } 
+        headers: { 'x-telegram-id': userId } 
       });
       setProducts(products.filter(p => p.id !== id));
     } catch (err) { alert(err.response?.data?.error || 'Ошибка'); }
   };
 
-  // ФУНКЦИИ РЕДАКТИРОВАНИЯ ТОВАРА
   const openEditModal = (p, e) => {
     e.stopPropagation();
     const [desc, flavs, oldPrice] = (p.description || '').split('|||');
@@ -142,7 +141,7 @@ export default function CatalogPage({ mode = 'catalog' }) {
 
     try {
       const res = await axios.put(`/api/admin/products/${editingProduct.id}`, data, {
-        headers: { 'x-telegram-id': userId, 'x-tg-init-data': initData }
+        headers: { 'x-telegram-id': userId }
       });
       setProducts(products.map(p => p.id === editingProduct.id ? res.data : p));
       setEditingProduct(null);
@@ -221,7 +220,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
                     </button>
                   </div>
 
-                  {/* КНОПКИ РЕДАКТИРОВАНИЯ И УДАЛЕНИЯ ДЛЯ АДМИНА */}
                   {isAdmin && (
                     <div className="absolute top-2 left-2 flex gap-1 z-10">
                       <button onClick={(e) => openEditModal(p, e)} className="bg-blue-600/90 text-white p-1.5 rounded-lg text-sm shadow-md">✏️</button>
@@ -312,7 +310,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
         );
       })()}
 
-      {/* МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ТОВАРА */}
       {editingProduct && (
         <div className="fixed inset-0 bg-black/95 z-[60] flex justify-center items-center p-4 overflow-y-auto">
           <div className="bg-[#1a1a1a] p-5 rounded-2xl border border-gray-800 w-full max-w-sm my-auto shadow-2xl">
