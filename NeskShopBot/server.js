@@ -11,6 +11,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const prisma = new PrismaClient();
 
+// ⚠️ СПИСОК АДМИНИСТРАТОРОВ (Добавь второй ID в кавычках)
+const ADMIN_IDS = ['1044141986', 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА'];
+
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -38,7 +41,7 @@ app.use(express.static(path.join(__dirname, 'frontend/dist')));
 app.get('/api/categories', (req, res) => res.json(JSON.parse(fs.readFileSync(categoriesFile, 'utf8'))));
 
 app.post('/api/admin/categories', upload.single('image'), (req, res) => {
-  if (String(req.headers['x-telegram-id']) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
+  if (!ADMIN_IDS.includes(String(req.headers['x-telegram-id']))) return res.status(403).json({ error: 'Нет доступа' });
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   const newCat = {
     id: Date.now().toString(), name: req.body.name,
@@ -51,7 +54,7 @@ app.post('/api/admin/categories', upload.single('image'), (req, res) => {
 });
 
 app.delete('/api/admin/categories/:id', (req, res) => {
-  if (String(req.headers['x-telegram-id']) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
+  if (!ADMIN_IDS.includes(String(req.headers['x-telegram-id']))) return res.status(403).json({ error: 'Нет доступа' });
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   fs.writeFileSync(categoriesFile, JSON.stringify(cats.filter(c => c.id !== req.params.id), null, 2));
   res.json({ success: true });
@@ -62,7 +65,7 @@ app.get('/api/products', async (req, res) => res.json(await prisma.product.findM
 
 app.post('/api/admin/products', upload.single('image'), async (req, res) => {
   try {
-    if (String(req.headers['x-telegram-id']) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
+    if (!ADMIN_IDS.includes(String(req.headers['x-telegram-id']))) return res.status(403).json({ error: 'Нет доступа' });
     const { title, price, category, description, flavors, oldPrice } = req.body;
     const finalDesc = `${description || ''}|||${flavors || ''}|||${oldPrice || ''}`;
     const product = await prisma.product.create({
@@ -74,7 +77,7 @@ app.post('/api/admin/products', upload.single('image'), async (req, res) => {
 
 app.delete('/api/admin/products/:id', async (req, res) => {
   try {
-    if (String(req.headers['x-telegram-id']) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
+    if (!ADMIN_IDS.includes(String(req.headers['x-telegram-id']))) return res.status(403).json({ error: 'Нет доступа' });
     await prisma.product.delete({ where: { id: isNaN(Number(req.params.id)) ? req.params.id : Number(req.params.id) } });
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -84,15 +87,12 @@ app.delete('/api/admin/products/:id', async (req, res) => {
 app.post('/api/orders', async (req, res) => {
   try {
     const { items, totalAmount, buyerName, deliveryMethod, deliveryAddress, note, username } = req.body;
-    const ADMIN_ID = '1044141986';
     const BOT_TOKEN = process.env.bot_token || process.env.BOT_TOKEN;
     
     if (!BOT_TOKEN) return res.status(500).json({ error: 'Токен бота не настроен' });
 
-    // Формируем список товаров для сообщения
     const itemsText = items.map(item => `▪️ ${item.title} (x${item.quantity}) — ${item.price * item.quantity} ₽`).join('\n');
     
-    // Красивое сообщение в Telegram админу
     const message = `
 🚨 <b>НОВЫЙ ЗАКАЗ!</b>
 
@@ -107,12 +107,16 @@ ${itemsText}
 💰 <b>Сумма к оплате:</b> ${totalAmount} ₽
 `;
 
-    // Отправляем сообщение тебе
-    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: ADMIN_ID, text: message, parse_mode: 'HTML' })
-    });
+    // Отправляем сообщение ВСЕМ админам из списка
+    for (const adminId of ADMIN_IDS) {
+      if (adminId && adminId !== 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА') {
+        fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: adminId, text: message, parse_mode: 'HTML' })
+        }).catch(err => console.error('Ошибка отправки админу', adminId, err));
+      }
+    }
 
     res.json({ success: true });
   } catch (err) {
@@ -120,7 +124,6 @@ ${itemsText}
   }
 });
 
-// SPA fallback
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'frontend/dist', 'index.html')));
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server on port ${PORT}`));
