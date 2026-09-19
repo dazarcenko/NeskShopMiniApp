@@ -8,12 +8,15 @@ export default function AdminPage() {
   
   const tg = window.Telegram?.WebApp;
   const userId = String(tg?.initDataUnsafe?.user?.id);
-  const initData = tg?.initData; // ДАННЫЕ ДЛЯ БЕЗОПАСНОЙ АВТОРИЗАЦИИ
+  const initData = tg?.initData; 
 
   const [formData, setFormData] = useState({ title: '', price: '', oldPrice: '', mainCat: '', subCat: '', description: '', flavors: '' });
   const [image, setImage] = useState(null);
+  
+  // Состояния для категорий (добавили editingCategory)
   const [catData, setCatData] = useState({ name: '', subcategories: '' });
   const [catImage, setCatImage] = useState(null);
+  const [editingCategory, setEditingCategory] = useState(null);
 
   useEffect(() => { fetchCategories(); }, []);
 
@@ -60,21 +63,30 @@ export default function AdminPage() {
 
   const handleCatSubmit = async (e) => {
     e.preventDefault();
-    if (!catImage) return alert('Выберите картинку!');
+    if (!editingCategory && !catImage) return alert('Выберите картинку!');
     setLoading(true);
+    
     const data = new FormData();
     data.append('name', catData.name);
     data.append('subcategories', catData.subcategories);
-    data.append('image', catImage);
+    if (catImage) data.append('image', catImage);
 
     try {
-      await axios.post('/api/admin/categories', data, { 
-        headers: { 'x-telegram-id': userId, 'x-tg-init-data': initData } 
-      });
-      if(tg?.showAlert) tg.showAlert('Категория добавлена!');
+      if (editingCategory) {
+        await axios.put(`/api/admin/categories/${editingCategory.id}`, data, { 
+          headers: { 'x-telegram-id': userId, 'x-tg-init-data': initData } 
+        });
+        if(tg?.showAlert) tg.showAlert('Категория обновлена!');
+      } else {
+        await axios.post('/api/admin/categories', data, { 
+          headers: { 'x-telegram-id': userId, 'x-tg-init-data': initData } 
+        });
+        if(tg?.showAlert) tg.showAlert('Категория добавлена!');
+      }
       fetchCategories();
       setCatData({ name: '', subcategories: '' });
       setCatImage(null);
+      setEditingCategory(null);
     } catch (err) { alert(err.response?.data?.error || 'Ошибка'); } 
     finally { setLoading(false); }
   };
@@ -98,6 +110,7 @@ export default function AdminPage() {
         <button onClick={() => setTab('products')} className={`flex-1 py-2 font-bold rounded-lg ${tab === 'products' ? 'bg-[#FFD700] text-black' : 'bg-black text-white border border-gray-700'}`}>Добавить товар</button>
         <button onClick={() => setTab('categories')} className={`flex-1 py-2 font-bold rounded-lg ${tab === 'categories' ? 'bg-[#FFD700] text-black' : 'bg-black text-white border border-gray-700'}`}>Категории</button>
       </div>
+      
       {tab === 'products' ? (
         <form onSubmit={handleProductSubmit} className="flex flex-col gap-3">
           <input type="text" placeholder="Название товара" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
@@ -126,21 +139,30 @@ export default function AdminPage() {
           <div className="bg-black border border-gray-700 rounded-lg p-3">
             <h3 className="text-white font-bold mb-3">Существующие категории:</h3>
             {categories.map(c => (
-              <div key={c.id} className="flex justify-between items-center mb-2 bg-[#1a1a1a] p-2 rounded-lg">
+              <div key={c.id} className="flex justify-between items-center mb-2 bg-[#1a1a1a] p-2 rounded-lg border border-gray-800">
                 <span className="text-[#FFD700]">{c.name} {c.subcategories.length > 0 && <span className="text-xs text-gray-500">({c.subcategories.join(', ')})</span>}</span>
-                <button onClick={() => handleDeleteCat(c.id)} className="bg-red-600 text-white px-2 py-1 rounded text-xs">Удалить</button>
+                <div className="flex gap-1">
+                  <button onClick={() => { setEditingCategory(c); setCatData({ name: c.name, subcategories: c.subcategories.join(', ') }); setCatImage(null); }} className="bg-blue-600/90 text-white p-1.5 rounded-lg text-sm shadow-md active:scale-95">✏️</button>
+                  <button onClick={() => handleDeleteCat(c.id)} className="bg-red-600/90 text-white p-1.5 rounded-lg text-sm shadow-md active:scale-95">🗑️</button>
+                </div>
               </div>
             ))}
           </div>
           <form onSubmit={handleCatSubmit} className="flex flex-col gap-3 mt-4 border-t border-gray-800 pt-4">
-            <h3 className="text-white font-bold">Создать новую:</h3>
+            <h3 className="text-white font-bold">{editingCategory ? 'Редактировать категорию:' : 'Создать новую:'}</h3>
             <input type="text" placeholder="Название (например: Жидкости)" required value={catData.name} onChange={e => setCatData({...catData, name: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
             <input type="text" placeholder="Подкатегории через запятую (20 мг, 50 мг)" value={catData.subcategories} onChange={e => setCatData({...catData, subcategories: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
             <div className="bg-black border border-gray-700 rounded-lg p-3">
-              <label className="text-sm text-gray-400 block mb-2">Обложка категории:</label>
-              <input type="file" accept="image/jpeg, image/png, image/webp" required onChange={e => setCatImage(e.target.files[0])} className="text-sm text-gray-400 file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-[#FFD700] file:text-black file:font-bold"/>
+              <label className="text-sm text-gray-400 block mb-2">{editingCategory ? 'Новая обложка (необязательно):' : 'Обложка категории:'}</label>
+              <input type="file" accept="image/jpeg, image/png, image/webp" onChange={e => setCatImage(e.target.files[0])} className="text-sm text-gray-400 file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-[#FFD700] file:text-black file:font-bold"/>
             </div>
-            <button type="submit" disabled={loading} className="bg-[#FFD700] text-black font-bold py-3 rounded-lg mt-2">{loading ? 'Загрузка...' : 'Добавить категорию'}</button>
+            
+            <div className="flex gap-2 mt-2">
+              <button type="submit" disabled={loading} className="flex-1 bg-[#FFD700] text-black font-bold py-3 rounded-lg">{loading ? 'Загрузка...' : (editingCategory ? 'Сохранить' : 'Добавить')}</button>
+              {editingCategory && (
+                <button type="button" onClick={() => { setEditingCategory(null); setCatData({ name: '', subcategories: '' }); }} className="flex-1 bg-gray-800 text-white font-bold py-3 rounded-lg">Отмена</button>
+              )}
+            </div>
           </form>
         </div>
       )}
