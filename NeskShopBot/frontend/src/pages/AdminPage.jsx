@@ -6,9 +6,10 @@ export default function AdminPage() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const tg = window.Telegram?.WebApp;
-  const ADMIN_ID = '1044141986';
+  
+  // Достаем актуальный ID того админа, который сейчас сидит в приложении
+  const userId = String(tg?.initDataUnsafe?.user?.id);
 
-  // Добавлено поле oldPrice
   const [formData, setFormData] = useState({ title: '', price: '', oldPrice: '', mainCat: '', subCat: '', description: '', flavors: '' });
   const [image, setImage] = useState(null);
   const [catData, setCatData] = useState({ name: '', subcategories: '' });
@@ -42,11 +43,12 @@ export default function AdminPage() {
     data.append('category', finalCategory);
     data.append('description', formData.description);
     data.append('flavors', formData.flavors);
-    data.append('oldPrice', formData.oldPrice); // Отправляем старую цену
+    data.append('oldPrice', formData.oldPrice);
     data.append('image', image);
 
     try {
-      await axios.post('/api/admin/products', data, { headers: { 'x-telegram-id': ADMIN_ID } });
+      // Отправляем ID в заголовках
+      await axios.post('/api/admin/products', data, { headers: { 'x-telegram-id': userId } });
       if(tg?.showAlert) tg.showAlert('Товар добавлен!');
       setFormData({ ...formData, title: '', price: '', oldPrice: '', description: '', flavors: '' });
       setImage(null);
@@ -65,7 +67,7 @@ export default function AdminPage() {
     data.append('image', catImage);
 
     try {
-      await axios.post('/api/admin/categories', data, { headers: { 'x-telegram-id': ADMIN_ID } });
+      await axios.post('/api/admin/categories', data, { headers: { 'x-telegram-id': userId } });
       if(tg?.showAlert) tg.showAlert('Категория добавлена!');
       fetchCategories();
       setCatData({ name: '', subcategories: '' });
@@ -77,7 +79,7 @@ export default function AdminPage() {
   const handleDeleteCat = async (id) => {
     if (!window.confirm('Удалить категорию?')) return;
     try {
-      await axios.delete(`/api/admin/categories/${id}`, { headers: { 'x-telegram-id': ADMIN_ID } });
+      await axios.delete(`/api/admin/categories/${id}`, { headers: { 'x-telegram-id': userId } });
       fetchCategories();
     } catch (err) { alert('Ошибка'); }
   };
