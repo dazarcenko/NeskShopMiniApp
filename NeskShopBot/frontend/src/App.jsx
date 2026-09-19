@@ -14,7 +14,7 @@ function Navigation() {
   const userId = String(tg?.initDataUnsafe?.user?.id);
   
   // ⚠️ СПИСОК АДМИНИСТРАТОРОВ ФРОНТЕНД
-  const ADMIN_IDS = ['1044141986', 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА'];
+  const ADMIN_IDS = ['1044141986', '1067205524'];
   const hasAdminAccess = ADMIN_IDS.includes(userId);
 
   return (
