@@ -10,10 +10,11 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const prisma = new PrismaClient();
 
-// Настройка папки для загрузки картинок
+// Настройка папки для загрузки картинок (ИСПРАВЛЕНО)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(path.join(__dirname, 'uploads'));
+    // Важно: первым аргументом должен быть null
+    cb(null, path.join(__dirname, 'uploads'));
   },
   filename: (req, file, cb) => {
     cb(null, Date.now() + path.extname(file.originalname));
@@ -37,10 +38,9 @@ app.get('/api/products', async (req, res) => {
 });
 
 // Добавление товара (Админка)
-// Добавление товара (Админка)
 app.post('/api/admin/products', upload.single('image'), async (req, res) => {
   try {
-    // Проверка прав: теперь доступ есть только у вашего Telegram ID
+    // Проверка прав: доступ только у вашего Telegram ID
     const tgId = req.headers['x-telegram-id'];
     if (String(tgId) !== '1044141986') {
       return res.status(403).json({ error: 'Нет доступа' });
