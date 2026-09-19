@@ -9,7 +9,7 @@ export default function ProfilePage() {
   const [view, setView] = useState('main'); // 'main' - профиль, 'history' - история заказов
 
   // --- ВАЖНО: Впиши сюда свой юзернейм без @ (например, 'durov') ---
-  const MANAGER_USERNAME = 'ВСТАВЬ_СВОЙ_ЮЗЕРНЕЙМ_ЗДЕСЬ'; 
+  const MANAGER_USERNAME = 'managernesk'; 
 
   useEffect(() => {
     // Подтягиваем статистику
