@@ -37,17 +37,18 @@ app.get('/api/products', async (req, res) => {
 });
 
 // Добавление товара (Админка)
+// Добавление товара (Админка)
 app.post('/api/admin/products', upload.single('image'), async (req, res) => {
   try {
-    // Проверка прав закомментирована для удобства
-    // const tgId = req.headers['x-telegram-id'];
-    // if (String(tgId) !== String(process.env.ADMIN_TG_ID)) {
-    //   return res.status(403).json({ error: 'Нет доступа' });
-    // }
+    // Проверка прав: теперь доступ есть только у вашего Telegram ID
+    const tgId = req.headers['x-telegram-id'];
+    if (String(tgId) !== '1044141986') {
+      return res.status(403).json({ error: 'Нет доступа' });
+    }
 
     const { title, price, category, description } = req.body;
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
-    
+
     const product = await prisma.product.create({
       data: {
         title,
@@ -60,7 +61,6 @@ app.post('/api/admin/products', upload.single('image'), async (req, res) => {
     
     res.json(product);
   } catch (error) {
-    console.error('Ошибка добавления товара:', error);
     res.status(500).json({ error: error.message });
   }
 });
