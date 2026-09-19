@@ -8,10 +8,9 @@ export default function AdminPage() {
   const tg = window.Telegram?.WebApp;
   const ADMIN_ID = '1044141986';
 
-  // В formData добавилось поле flavors
-  const [formData, setFormData] = useState({ title: '', price: '', mainCat: '', subCat: '', description: '', flavors: '' });
+  // Добавлено поле oldPrice
+  const [formData, setFormData] = useState({ title: '', price: '', oldPrice: '', mainCat: '', subCat: '', description: '', flavors: '' });
   const [image, setImage] = useState(null);
-
   const [catData, setCatData] = useState({ name: '', subcategories: '' });
   const [catImage, setCatImage] = useState(null);
 
@@ -37,19 +36,19 @@ export default function AdminPage() {
     setLoading(true);
     
     const finalCategory = formData.subCat ? `${formData.mainCat} | ${formData.subCat}` : formData.mainCat;
-
     const data = new FormData();
     data.append('title', formData.title);
     data.append('price', formData.price);
     data.append('category', finalCategory);
     data.append('description', formData.description);
-    data.append('flavors', formData.flavors); // Отправляем вкусы на сервер
+    data.append('flavors', formData.flavors);
+    data.append('oldPrice', formData.oldPrice); // Отправляем старую цену
     data.append('image', image);
 
     try {
       await axios.post('/api/admin/products', data, { headers: { 'x-telegram-id': ADMIN_ID } });
       if(tg?.showAlert) tg.showAlert('Товар добавлен!');
-      setFormData({ ...formData, title: '', price: '', description: '', flavors: '' });
+      setFormData({ ...formData, title: '', price: '', oldPrice: '', description: '', flavors: '' });
       setImage(null);
       document.getElementById('fileInput').value = '';
     } catch (err) { alert('Ошибка'); } 
@@ -97,7 +96,11 @@ export default function AdminPage() {
       {tab === 'products' ? (
         <form onSubmit={handleProductSubmit} className="flex flex-col gap-3">
           <input type="text" placeholder="Название товара" required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
-          <input type="number" placeholder="Цена (₽)" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
+          
+          <div className="flex gap-2">
+            <input type="number" placeholder="Новая цена (₽)" required value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
+            <input type="number" placeholder="Старая цена (если скидка)" value={formData.oldPrice} onChange={e => setFormData({...formData, oldPrice: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
+          </div>
           
           <select value={formData.mainCat} onChange={e => updateFormCat(e.target.value)} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]">
             {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
@@ -108,9 +111,7 @@ export default function AdminPage() {
             </select>
           )}
 
-          {/* НОВОЕ ПОЛЕ ДЛЯ ВКУСОВ */}
-          <input type="text" placeholder="Вкусы через запятую (Мята, Яблоко, Лесные ягоды)" value={formData.flavors} onChange={e => setFormData({...formData, flavors: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
-
+          <input type="text" placeholder="Вкусы через запятую (необязательно)" value={formData.flavors} onChange={e => setFormData({...formData, flavors: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
           <textarea placeholder="Описание" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white min-h-[80px] outline-none focus:border-[#FFD700]"/>
           <div className="bg-black border border-gray-700 rounded-lg p-3">
             <label className="text-sm text-gray-400 block mb-2">Фото товара:</label>
