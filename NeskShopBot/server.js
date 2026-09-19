@@ -11,13 +11,10 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const prisma = new PrismaClient();
 
-// Настройка "вечной" папки
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-// --- НОВОЕ: УПРАВЛЕНИЕ КАТЕГОРИЯМИ В ФАЙЛЕ ---
 const categoriesFile = path.join(uploadDir, 'categories.json');
-// Если категорий еще нет, создаем стандартные (как ты просил)
 if (!fs.existsSync(categoriesFile)) {
   const defaultCats = [
     { id: "1", name: "Жидкости", image: "https://via.placeholder.com/400/1a1a1a/FFD700?text=Жидкости", subcategories: ["20 мг", "50 мг", "70 мг"] },
@@ -52,8 +49,7 @@ app.post('/api/admin/categories', upload.single('image'), (req, res) => {
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   
   const newCat = {
-    id: Date.now().toString(),
-    name,
+    id: Date.now().toString(), name,
     image: imageUrl || 'https://via.placeholder.com/400/1a1a1a/FFD700?text=' + name,
     subcategories: subcategories ? subcategories.split(',').map(s => s.trim()).filter(s => s) : []
   };
@@ -65,7 +61,6 @@ app.post('/api/admin/categories', upload.single('image'), (req, res) => {
 app.delete('/api/admin/categories/:id', (req, res) => {
   const tgId = req.headers['x-telegram-id'];
   if (String(tgId) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
-
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   cats = cats.filter(c => c.id !== req.params.id);
   fs.writeFileSync(categoriesFile, JSON.stringify(cats, null, 2));
@@ -78,29 +73,20 @@ app.get('/api/products', async (req, res) => {
   res.json(products);
 });
 
+// Добавление товара (Теперь с поддержкой вкусов)
 app.post('/api/admin/products', upload.single('image'), async (req, res) => {
   try {
     const tgId = req.headers['x-telegram-id'];
     if (String(tgId) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
-    const { title, price, category, description } = req.body;
+    
+    const { title, price, category, description, flavors } = req.body;
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
-    const product = await prisma.product.create({
-      data: { title, price: Number(price), category, description: description || '', imageUrl: imageUrl || '' }
-    });
-    res.json(product);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
+    
+    // Склеиваем описание и вкусы в одну строку для базы данных
+    const finalDesc = (description || '') + (flavors ? '|||' + flavors : '');
 
-app.put('/api/admin/products/:id', upload.single('image'), async (req, res) => {
-  try {
-    const tgId = req.headers['x-telegram-id'];
-    if (String(tgId) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
-    const { title, price, category, description } = req.body;
-    const updateData = { title, price: Number(price), category, description: description || '' };
-    if (req.file) updateData.imageUrl = `/uploads/${req.file.filename}`;
-    const product = await prisma.product.update({
-      where: { id: isNaN(Number(req.params.id)) ? req.params.id : Number(req.params.id) },
-      data: updateData
+    const product = await prisma.product.create({
+      data: { title, price: Number(price), category, description: finalDesc, imageUrl: imageUrl || '' }
     });
     res.json(product);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -118,11 +104,9 @@ app.delete('/api/admin/products/:id', async (req, res) => {
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'frontend/dist', 'index.html')));
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server on port ${PORT}`));
 
-// --- БОТ ---
 const BOT_TOKEN = process.env.bot_token || process.env.BOT_TOKEN; 
 const WEB_APP_URL = 'https://neskshopminiapp-production.up.railway.app';
 let lastUpdateId = 0;
