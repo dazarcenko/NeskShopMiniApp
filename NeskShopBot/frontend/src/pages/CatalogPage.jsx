@@ -100,12 +100,14 @@ export default function CatalogPage({ mode = 'catalog' }) {
     e.stopPropagation();
     if (!window.confirm('Точно удалить?')) return;
     try {
-      // Отправляем ID текущего админа для проверки на сервере
-      await axios.delete(`/api/admin/products/${id}`, { headers: { 'x-telegram-id': userId } });
+      const initData = tg?.initData; // ДАННЫЕ ДЛЯ БЕЗОПАСНОСТИ
+      await axios.delete(`/api/admin/products/${id}`, { 
+        headers: { 'x-telegram-id': userId, 'x-tg-init-data': initData } 
+      });
       setProducts(products.filter(p => p.id !== id));
-    } catch (err) { alert('Ошибка'); }
+    } catch (err) { alert(err.response?.data?.error || 'Ошибка'); }
   };
-
+  
   const getEmptyText = () => {
     if (mode === 'discounts') return "Скидок пока нет, но они скоро появятся! 🎁";
     if (mode === 'favorites') return "В избранном пока пусто ❤️";
