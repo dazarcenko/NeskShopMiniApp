@@ -5,12 +5,15 @@ export default function CatalogPage() {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   
-  // Навигация: 'main' (категории), 'sub' (выбор крепости), 'products' (список товаров)
+  // Навигация: 'main', 'sub', 'products', 'detail' (страница одного товара)
   const [view, setView] = useState('main'); 
   const [activeMainCat, setActiveMainCat] = useState(null);
   const [activeSubCat, setActiveSubCat] = useState(null);
+  
+  // Состояния для открытого товара
+  const [activeProduct, setActiveProduct] = useState(null);
+  const [selectedFlavor, setSelectedFlavor] = useState(null);
 
-  // Для админа
   const tg = window.Telegram?.WebApp;
   const isAdmin = String(tg?.initDataUnsafe?.user?.id) === '1044141986';
 
@@ -30,8 +33,18 @@ export default function CatalogPage() {
     setView('products');
   };
 
+  const handleProductClick = (product) => {
+    setActiveProduct(product);
+    setSelectedFlavor(null); // Сбрасываем выбранный вкус при открытии нового товара
+    setView('detail');
+  };
+
   const handleBack = () => {
-    if (view === 'products' && activeMainCat?.subcategories?.length > 0) {
+    if (view === 'detail') {
+      setView('products');
+      setActiveProduct(null);
+      setSelectedFlavor(null);
+    } else if (view === 'products' && activeMainCat?.subcategories?.length > 0) {
       setView('sub');
       setActiveSubCat(null);
     } else {
@@ -44,18 +57,29 @@ export default function CatalogPage() {
   const finalTargetCategory = activeSubCat ? `${activeMainCat?.name} | ${activeSubCat}` : activeMainCat?.name;
   const filteredProducts = products.filter(p => p.category === finalTargetCategory);
 
-  const addToCart = (product) => {
+  const addToCart = (product, flavor = null) => {
     let cart = JSON.parse(localStorage.getItem('nesk_cart')) || [];
-    const existing = cart.find(item => item.id === product.id);
+    
+    // Делаем уникальный ID для каждого вкуса, чтобы в корзине они не смешивались
+    const cartItemId = flavor ? `${product.id}-${flavor}` : product.id;
+    const cartItemTitle = flavor ? `${product.title} (${flavor})` : product.title;
+
+    const existing = cart.find(item => item.id === cartItemId);
     if (existing) existing.quantity += 1;
-    else cart.push({ ...product, quantity: 1 });
+    else cart.push({ ...product, id: cartItemId, title: cartItemTitle, quantity: 1 });
+    
     localStorage.setItem('nesk_cart', JSON.stringify(cart));
     
     if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-    if (tg?.showAlert) tg.showAlert(`Добавлено: ${product.title}`);
+    if (tg?.showAlert) tg.showAlert(`Добавлено: ${cartItemTitle}`);
+    else alert(`Добавлено: ${cartItemTitle}`);
+    
+    // Возвращаемся в каталог после добавления
+    handleBack();
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id, e) => {
+    e.stopPropagation(); // Чтобы при клике на удаление не открывалась карточка товара
     if (!window.confirm('Точно удалить?')) return;
     try {
       await axios.delete(`/api/admin/products/${id}`, { headers: { 'x-telegram-id': '1044141986' } });
@@ -64,20 +88,10 @@ export default function CatalogPage() {
   };
 
   return (
-    <div className="px-4 pt-4">
+    <div className={view === 'detail' ? "pb-4" : "px-4 pt-4"}>
       
-      {/* КРАСИВЫЙ БАННЕР НА ГЛАВНОЙ */}
-      {view === 'main' ? (
-        <div className="mb-6 p-5 rounded-2xl bg-gradient-to-br from-[#1a1a1a] to-black border border-gray-800 shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative overflow-hidden">
-          {/* Легкое свечение на фоне */}
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-[#FFD700] opacity-10 rounded-full blur-3xl"></div>
-          
-          <h1 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 relative z-10">
-            Выберите <span className="text-[#FFD700]">категорию</span>
-          </h1>
-          <p className="text-sm text-gray-500 mt-1 relative z-10">Откройте для себя наш ассортимент</p>
-        </div>
-      ) : (
+      {/* КНОПКА НАЗАД (Скрываем на главной и внутри карточки товара, там своя) */}
+      {view !== 'main' && view !== 'detail' && (
         <div className="flex items-center mb-6 mt-2">
           <button onClick={handleBack} className="mr-3 bg-[#1a1a1a] p-2 rounded-xl text-white border border-gray-800 hover:bg-gray-800 transition active:scale-95">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -88,22 +102,30 @@ export default function CatalogPage() {
         </div>
       )}
 
-      {/* ШАГ 1: ГЛАВНЫЕ КАТЕГОРИИ */}
+      {/* ШАГ 1: ГЛАВНАЯ СТРАНИЦА */}
       {view === 'main' && (
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          {categories.map(c => (
-            <div key={c.id} onClick={() => handleCategoryClick(c)} className="relative h-40 rounded-2xl overflow-hidden shadow-lg border border-gray-800 active:scale-95 transition-transform cursor-pointer">
-              <img src={c.image} alt={c.name} className="absolute inset-0 w-full h-full object-cover" />
-              {/* Градиент поверх картинки, чтобы текст всегда хорошо читался */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-end justify-center pb-4">
-                <span className="text-[#FFD700] font-bold text-lg drop-shadow-md">{c.name}</span>
+        <>
+          <div className="mb-6 p-5 rounded-2xl bg-gradient-to-br from-[#1a1a1a] to-black border border-gray-800 shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative overflow-hidden">
+            <div className="absolute -top-10 -right-10 w-40 h-40 bg-[#FFD700] opacity-10 rounded-full blur-3xl"></div>
+            <h1 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 relative z-10">
+              Выберите <span className="text-[#FFD700]">категорию</span>
+            </h1>
+            <p className="text-sm text-gray-500 mt-1 relative z-10">Откройте для себя наш ассортимент</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            {categories.map(c => (
+              <div key={c.id} onClick={() => handleCategoryClick(c)} className="relative h-40 rounded-2xl overflow-hidden shadow-lg border border-gray-800 active:scale-95 transition-transform cursor-pointer">
+                <img src={c.image} alt={c.name} className="absolute inset-0 w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-end justify-center pb-4">
+                  <span className="text-[#FFD700] font-bold text-lg drop-shadow-md">{c.name}</span>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
 
-      {/* ШАГ 2: ПОДКАТЕГОРИИ */}
+      {/* ШАГ 2: ВЫБОР КРЕПОСТИ (ПОДКАТЕГОРИИ) */}
       {view === 'sub' && (
         <div className="flex flex-col gap-3">
           {activeMainCat.subcategories.map(sub => (
@@ -115,33 +137,104 @@ export default function CatalogPage() {
         </div>
       )}
 
-      {/* ШАГ 3: ТОВАРЫ */}
+      {/* ШАГ 3: СПИСОК ТОВАРОВ В КАТЕГОРИИ */}
       {view === 'products' && (
         filteredProducts.length === 0 ? (
           <div className="text-center text-gray-500 mt-16 font-medium">В этом разделе пока нет товаров</div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {filteredProducts.map(p => (
-              <div key={p.id} className="bg-[#1a1a1a] rounded-2xl overflow-hidden shadow-lg flex flex-col border border-gray-800 relative">
-                {isAdmin && (
-                  <div className="absolute top-2 left-2 flex gap-1 z-10">
-                    <button onClick={() => handleDelete(p.id)} className="bg-red-600/90 text-white p-1.5 rounded-lg text-sm">🗑️</button>
+            {filteredProducts.map(p => {
+               // Достаем описание для карточки, отсекая скрытые вкусы
+               const [desc] = (p.description || '').split('|||');
+               return (
+                <div key={p.id} onClick={() => handleProductClick(p)} className="bg-[#1a1a1a] rounded-2xl overflow-hidden shadow-lg flex flex-col border border-gray-800 relative active:scale-95 transition-transform cursor-pointer">
+                  {isAdmin && (
+                    <div className="absolute top-2 left-2 flex gap-1 z-10">
+                      <button onClick={(e) => handleDelete(p.id, e)} className="bg-red-600/90 text-white p-1.5 rounded-lg text-sm">🗑️</button>
+                    </div>
+                  )}
+                  <div className="h-40 relative">
+                    <img src={p.imageUrl} alt={p.title} className="object-cover w-full h-full" />
                   </div>
-                )}
-                <div className="h-40 relative">
-                  <img src={p.imageUrl} alt={p.title} className="object-cover w-full h-full" />
+                  <div className="p-3 flex flex-col flex-grow text-center">
+                    <h3 className="text-sm font-bold text-white leading-tight mb-1">{p.title}</h3>
+                    <p className="text-xs text-gray-400 mb-2 line-clamp-1 flex-grow">{desc}</p>
+                    <p className="text-[#FFD700] font-extrabold text-lg">{p.price} ₽</p>
+                  </div>
                 </div>
-                <div className="p-3 flex flex-col flex-grow">
-                  <h3 className="text-sm font-semibold text-white leading-tight mb-1">{p.title}</h3>
-                  <p className="text-xs text-gray-400 mb-2 line-clamp-2 flex-grow">{p.description}</p>
-                  <p className="text-[#FFD700] font-bold mb-2 text-lg">{p.price} ₽</p>
-                  <button onClick={() => addToCart(p)} className="w-full bg-[#FFD700] text-black font-bold py-2.5 rounded-xl active:bg-yellow-600 transition-colors">В корзину</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )
       )}
+
+      {/* ШАГ 4: КАРТОЧКА КОНКРЕТНОГО ТОВАРА (С ВЫБОРОМ ВКУСОВ) */}
+      {view === 'detail' && activeProduct && (() => {
+        // Достаем текст и список вкусов из нашей склеенной строки
+        const [descText, flavsString] = (activeProduct.description || '').split('|||');
+        const flavorsList = flavsString ? flavsString.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+        return (
+          <div className="animate-fade-in pb-10">
+            {/* Большая картинка */}
+            <div className="relative h-80 w-full bg-black rounded-b-3xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.5)] mb-5">
+              <img src={activeProduct.imageUrl} className="w-full h-full object-cover opacity-90" />
+              {/* Красивая кнопка назад прямо на картинке */}
+              <button onClick={handleBack} className="absolute top-4 left-4 bg-black/60 p-2.5 rounded-full text-white backdrop-blur-md active:scale-90 transition-transform">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
+              </button>
+              {/* Градиент снизу картинки */}
+              <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#0a0a0a] to-transparent"></div>
+            </div>
+
+            <div className="px-5">
+              <h1 className="text-3xl font-extrabold text-white mb-1 leading-tight">{activeProduct.title}</h1>
+              <p className="text-[#FFD700] text-2xl font-black mb-4">{activeProduct.price} ₽</p>
+
+              {descText && <p className="text-gray-400 text-sm mb-6 leading-relaxed bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800">{descText}</p>}
+
+              {/* БЛОК С ВЫБОРОМ ВКУСОВ */}
+              {flavorsList.length > 0 && (
+                <div className="mb-8">
+                  <h3 className="text-white font-bold mb-3 text-lg flex items-center gap-2">
+                    <span className="text-xl">✨</span> Выберите вкус:
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {flavorsList.map(f => (
+                      <button
+                        key={f}
+                        onClick={() => setSelectedFlavor(f)}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                          selectedFlavor === f 
+                            ? 'bg-[#FFD700] text-black shadow-[0_0_15px_rgba(255,215,0,0.3)] scale-105' 
+                            : 'bg-[#1a1a1a] text-gray-300 border border-gray-700 active:scale-95'
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* КНОПКА ДОБАВИТЬ В КОРЗИНУ */}
+              <button
+                onClick={() => {
+                  if (flavorsList.length > 0 && !selectedFlavor) {
+                    if (tg?.showAlert) tg.showAlert('⚠️ Пожалуйста, выберите вкус перед добавлением в корзину!');
+                    else alert('Пожалуйста, выберите вкус!');
+                    return;
+                  }
+                  addToCart(activeProduct, selectedFlavor);
+                }}
+                className="w-full bg-[#FFD700] text-black font-extrabold py-4 rounded-2xl text-lg active:scale-95 transition-transform shadow-[0_5px_20px_rgba(255,215,0,0.2)]"
+              >
+                Добавить в корзину
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
