@@ -5,7 +5,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   
-  // Метаданные (Отзывы и Закрепленные товары)
   const [reviews, setReviews] = useState({});
   const [pinned, setPinned] = useState([]);
   
@@ -17,7 +16,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
   const [activeProduct, setActiveProduct] = useState(null);
   const [selectedFlavor, setSelectedFlavor] = useState(null);
 
-  // Форма отзыва
   const [reviewText, setReviewText] = useState('');
   const [reviewRating, setReviewRating] = useState(5);
 
@@ -30,6 +28,7 @@ export default function CatalogPage({ mode = 'catalog' }) {
   const userId = String(user?.id);
   const initData = tg?.initData;
   
+  // ВШИТЫ ОБА ID АДМИНОВ
   const ADMIN_IDS = ['1044141986', '1067205524'];
   const isAdmin = ADMIN_IDS.includes(userId);
 
@@ -40,7 +39,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
     axios.get('/api/categories').then(res => setCategories(res.data)).catch(console.error);
     axios.get('/api/products').then(res => setProducts(res.data)).catch(console.error);
     
-    // Подгружаем отзывы и закрепы
     axios.get('/api/product-meta').then(res => {
       setReviews(res.data.reviews || {});
       setPinned(res.data.pinned || []);
@@ -60,13 +58,12 @@ export default function CatalogPage({ mode = 'catalog' }) {
     displayProducts = products.filter(p => favorites.includes(p.id));
   }
 
-  // --- СОРТИРОВКА ТОВАРОВ (ЗАКРЕПЛЕННЫЕ ВСЕГДА СВЕРХУ) ---
   const sortedProducts = [...displayProducts].sort((a, b) => {
     const aPin = pinned.includes(String(a.id));
     const bPin = pinned.includes(String(b.id));
-    if (aPin && !bPin) return -1; // a идет перед b
-    if (!aPin && bPin) return 1;  // b идет перед a
-    return 0; // если оба закреплены или оба нет — оставляем как есть
+    if (aPin && !bPin) return -1; 
+    if (!aPin && bPin) return 1;  
+    return 0; 
   });
 
   const toggleFavorite = (e, id) => {
@@ -190,6 +187,12 @@ export default function CatalogPage({ mode = 'catalog' }) {
     } catch (err) { alert(err.response?.data?.error || 'Ошибка'); }
   };
 
+  const getEmptyText = () => {
+    if (mode === 'discounts') return "Скидок пока нет, но они скоро появятся! 🎁";
+    if (mode === 'favorites') return "В избранном пока пусто ❤️";
+    return "В этом разделе пока нет товаров";
+  };
+
   return (
     <div className={view === 'detail' ? "pb-4" : "px-4 pt-4"}>
       {(view === 'products' || view === 'sub') && (
@@ -213,13 +216,12 @@ export default function CatalogPage({ mode = 'catalog' }) {
               Выберите <span className="text-[#FFD700]">категорию</span>
             </h1>
           </div>
+          
+          {/* ОБНОВЛЕННЫЙ БЛОК КАТЕГОРИЙ (БЕЗ ЗАТЕМНЕНИЯ И ТЕКСТА) */}
           <div className="grid grid-cols-2 gap-4 mb-4">
             {categories.map(c => (
-              <div key={c.id} onClick={() => handleCategoryClick(c)} className="relative h-40 rounded-2xl overflow-hidden shadow-lg border border-gray-800 active:scale-95 transition-transform cursor-pointer">
+              <div key={c.id} onClick={() => handleCategoryClick(c)} className="relative h-40 rounded-2xl overflow-hidden shadow-lg border border-gray-800 active:scale-95 transition-transform cursor-pointer bg-[#1a1a1a]">
                 <img src={c.image} alt={c.name} className="absolute inset-0 w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-end justify-center pb-4">
-                  <span className="text-[#FFD700] font-bold text-lg drop-shadow-md">{c.name}</span>
-                </div>
               </div>
             ))}
           </div>
@@ -246,7 +248,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
                const isFav = favorites.includes(p.id);
                const isPinned = pinned.includes(String(p.id));
                
-               // Подсчет среднего рейтинга для маленькой карточки
                const prodReviews = reviews[p.id] || [];
                const avgRating = prodReviews.length > 0 
                   ? (prodReviews.reduce((sum, r) => sum + r.rating, 0) / prodReviews.length).toFixed(1) 
@@ -264,7 +265,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
                     )}
                   </div>
 
-                  {/* КНОПКИ АДМИНА (ВКЛЮЧАЯ ЗАКРЕП 📌) */}
                   {isAdmin && (
                     <div className="absolute top-2 left-2 flex gap-1 z-10">
                       <button onClick={(e) => openEditModal(p, e)} className="bg-blue-600/90 text-white p-1.5 rounded-lg text-sm shadow-md">✏️</button>
@@ -281,7 +281,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
                   <div className="p-3 flex flex-col flex-grow text-left">
                     <h3 className="text-sm font-bold text-white leading-tight mb-1">{p.title}</h3>
                     
-                    {/* Рейтинг на маленькой карточке */}
                     {avgRating && (
                       <div className="flex items-center gap-1 mb-1">
                         <span className="text-[#FFD700] text-[10px]">★</span>
@@ -307,7 +306,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
         )
       )}
 
-      {/* --- СТРАНИЦА ОДНОГО ТОВАРА + ОТЗЫВЫ --- */}
       {view === 'detail' && activeProduct && (() => {
         const [desc, flavsString, oldPrice] = (activeProduct.description || '').split('|||');
         const flavorsList = flavsString ? flavsString.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -334,7 +332,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
             <div className="px-5">
               <h1 className="text-3xl font-extrabold text-white mb-1 leading-tight">{activeProduct.title}</h1>
               
-              {/* Рейтинг под названием */}
               {avgRating && (
                 <div className="flex items-center gap-1 mb-2">
                   <span className="text-[#FFD700] text-lg">★</span>
@@ -376,11 +373,9 @@ export default function CatalogPage({ mode = 'catalog' }) {
                 Добавить в корзину
               </button>
               
-              {/* --- БЛОК ОТЗЫВОВ --- */}
               <div className="mt-12 border-t border-gray-800 pt-6">
                 <h3 className="text-white font-bold mb-5 text-xl">Отзывы ({prodReviews.length})</h3>
                 
-                {/* Список отзывов */}
                 <div className="flex flex-col gap-4 mb-8">
                   {prodReviews.length === 0 ? (
                     <p className="text-gray-500 text-sm">Пока нет отзывов. Будьте первым!</p>
@@ -402,7 +397,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
                   )}
                 </div>
 
-                {/* Форма добавления отзыва */}
                 <form onSubmit={submitReview} className="bg-[#1a1a1a] p-5 rounded-2xl border border-gray-800">
                   <h4 className="text-white font-bold mb-3 text-sm">Оставить свой отзыв</h4>
                   
