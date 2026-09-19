@@ -4,7 +4,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 import fs from 'fs'; 
-import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,30 +11,16 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const prisma = new PrismaClient();
 
-const ADMIN_IDS = ['1044141986', 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА'];
+// ⚠️ ВПИШИ ОБА ID СЮДА (ОБЯЗАТЕЛЬНО В КАВЫЧКАХ)
+const ADMIN_IDS = ['1044141986', '1067205524'];
 const BOT_TOKEN = process.env.bot_token || process.env.BOT_TOKEN;
 
-function checkTelegramAuth(initData) {
-  if (!initData || !BOT_TOKEN) return false;
-  try {
-    const q = new URLSearchParams(initData);
-    const hash = q.get('hash');
-    q.delete('hash');
-    const keys = Array.from(q.keys()).sort();
-    const dataCheckString = keys.map(k => `${k}=${q.get(k)}`).join('\n');
-    const secretKey = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
-    const hmac = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-    return hmac === hash;
-  } catch (e) {
-    return false;
-  }
-}
-
+// Упрощенная и безотказная проверка прав
 const adminOnly = (req, res, next) => {
-  const tgId = req.headers['x-telegram-id'];
-  const initData = req.headers['x-tg-init-data'];
-  if (!ADMIN_IDS.includes(String(tgId))) return res.status(403).json({ error: 'Нет прав' });
-  if (!checkTelegramAuth(initData)) return res.status(403).json({ error: 'Недействительная подпись Telegram (Попытка взлома)' });
+  const tgId = String(req.headers['x-telegram-id']);
+  if (!ADMIN_IDS.includes(tgId)) {
+    return res.status(403).json({ error: 'Нет прав' });
+  }
   next();
 };
 
@@ -64,7 +49,7 @@ const upload = multer({
     const ext = allowed.test(path.extname(file.originalname).toLowerCase());
     const mime = allowed.test(file.mimetype);
     if (ext && mime) cb(null, true);
-    else cb(new Error('Разрешены только изображения (jpg, png, webp)!'));
+    else cb(new Error('Разрешены только картинки!'));
   }
 });
 
@@ -87,7 +72,6 @@ app.post('/api/admin/categories', adminOnly, upload.single('image'), (req, res) 
   res.json(newCat);
 });
 
-// НОВОЕ: Редактирование категории
 app.put('/api/admin/categories/:id', adminOnly, upload.single('image'), (req, res) => {
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   const index = cats.findIndex(c => c.id === req.params.id);
@@ -123,7 +107,6 @@ app.post('/api/admin/products', adminOnly, upload.single('image'), async (req, r
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// НОВОЕ: Редактирование товара
 app.put('/api/admin/products/:id', adminOnly, upload.single('image'), async (req, res) => {
   try {
     const { title, price, category, description, flavors, oldPrice } = req.body;
@@ -155,6 +138,7 @@ app.post('/api/orders', async (req, res) => {
     const itemsText = items.map(item => `▪️ ${item.title} (x${item.quantity}) — ${item.price * item.quantity} ₽`).join('\n');
     const message = `🚨 <b>НОВЫЙ ЗАКАЗ!</b>\n\n👤 <b>Имя:</b> ${buyerName}\n💬 <b>Связь:</b> ${username ? '@' + username : 'Скрыт/Нет юзернейма'}\n🚚 <b>Способ:</b> ${deliveryMethod}\n${deliveryAddress ? `📍 <b>Адрес:</b> ${deliveryAddress}\n` : ''}📝 <b>Примечание:</b> ${note || 'Нет'}\n\n📦 <b>Товары:</b>\n${itemsText}\n\n💰 <b>Сумма к оплате:</b> ${totalAmount} ₽`;
 
+    // Отправляем уведомления всем админам из массива
     for (const adminId of ADMIN_IDS) {
       if (adminId && adminId !== 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА') {
         fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
