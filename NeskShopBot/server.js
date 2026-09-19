@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
+import fs from 'fs'; // Добавили модуль для работы с файловой системой
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,11 +11,16 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const prisma = new PrismaClient();
 
-// Настройка папки для загрузки картинок (ИСПРАВЛЕНО)
+// АВТОМАТИЧЕСКОЕ СОЗДАНИЕ ПАПКИ uploads
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// Настройка папки для загрузки картинок
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Важно: первым аргументом должен быть null
-    cb(null, path.join(__dirname, 'uploads'));
+    cb(null, uploadDir); 
   },
   filename: (req, file, cb) => {
     cb(null, Date.now() + path.extname(file.originalname));
@@ -23,7 +29,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(uploadDir));
 app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
 // Получение списка товаров
@@ -40,7 +46,7 @@ app.get('/api/products', async (req, res) => {
 // Добавление товара (Админка)
 app.post('/api/admin/products', upload.single('image'), async (req, res) => {
   try {
-    // Проверка прав: доступ только у вашего Telegram ID
+    // Проверка прав по вашему ID
     const tgId = req.headers['x-telegram-id'];
     if (String(tgId) !== '1044141986') {
       return res.status(403).json({ error: 'Нет доступа' });
