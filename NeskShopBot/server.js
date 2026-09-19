@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const prisma = new PrismaClient();
 
-const ADMIN_IDS = ['1044141986', 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА'];
+const ADMIN_IDS = ['1044141986', '1067205524'];
 const BOT_TOKEN = process.env.bot_token || process.env.BOT_TOKEN;
 
 function checkTelegramAuth(initData) {
