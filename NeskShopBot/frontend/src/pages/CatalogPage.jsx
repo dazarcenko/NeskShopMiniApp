@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-export default function CatalogPage() {
+// Мы принимаем параметр mode ('catalog', 'discounts' или 'favorites')
+export default function CatalogPage({ mode = 'catalog' }) {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
+  const [favorites, setFavorites] = useState(JSON.parse(localStorage.getItem('nesk_favorites')) || []);
   
-  // Навигация: 'main', 'sub', 'products', 'detail' (страница одного товара)
-  const [view, setView] = useState('main'); 
+  // Если мы в каталоге — показываем категории. Если в скидках или избранном — сразу товары
+  const [view, setView] = useState(mode === 'catalog' ? 'main' : 'products'); 
   const [activeMainCat, setActiveMainCat] = useState(null);
   const [activeSubCat, setActiveSubCat] = useState(null);
-  
-  // Состояния для открытого товара
   const [activeProduct, setActiveProduct] = useState(null);
   const [selectedFlavor, setSelectedFlavor] = useState(null);
 
@@ -18,9 +18,35 @@ export default function CatalogPage() {
   const isAdmin = String(tg?.initDataUnsafe?.user?.id) === '1044141986';
 
   useEffect(() => {
+    setView(mode === 'catalog' ? 'main' : 'products');
+    setActiveProduct(null);
     axios.get('/api/categories').then(res => setCategories(res.data)).catch(console.error);
     axios.get('/api/products').then(res => setProducts(res.data)).catch(console.error);
-  }, []);
+  }, [mode]);
+
+  // ФИЛЬТРАЦИЯ ТОВАРОВ В ЗАВИСИМОСТИ ОТ ВЫБРАННОЙ ВКЛАДКИ
+  let displayProducts = [];
+  if (mode === 'catalog') {
+    const finalCat = activeSubCat ? `${activeMainCat?.name} | ${activeSubCat}` : activeMainCat?.name;
+    displayProducts = products.filter(p => p.category === finalCat);
+  } else if (mode === 'discounts') {
+    displayProducts = products.filter(p => {
+      const parts = (p.description || '').split('|||');
+      return parts[2] && parts[2].trim() !== ''; // Есть старая цена
+    });
+  } else if (mode === 'favorites') {
+    displayProducts = products.filter(p => favorites.includes(p.id));
+  }
+
+  const toggleFavorite = (e, id) => {
+    e.stopPropagation();
+    let favs = [...favorites];
+    if (favs.includes(id)) favs = favs.filter(fid => fid !== id);
+    else favs.push(id);
+    setFavorites(favs);
+    localStorage.setItem('nesk_favorites', JSON.stringify(favs));
+    if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+  };
 
   const handleCategoryClick = (cat) => {
     setActiveMainCat(cat);
@@ -35,7 +61,7 @@ export default function CatalogPage() {
 
   const handleProductClick = (product) => {
     setActiveProduct(product);
-    setSelectedFlavor(null); // Сбрасываем выбранный вкус при открытии нового товара
+    setSelectedFlavor(null);
     setView('detail');
   };
 
@@ -44,23 +70,18 @@ export default function CatalogPage() {
       setView('products');
       setActiveProduct(null);
       setSelectedFlavor(null);
-    } else if (view === 'products' && activeMainCat?.subcategories?.length > 0) {
+    } else if (mode === 'catalog' && view === 'products' && activeMainCat?.subcategories?.length > 0) {
       setView('sub');
       setActiveSubCat(null);
-    } else {
+    } else if (mode === 'catalog') {
       setView('main');
       setActiveMainCat(null);
       setActiveSubCat(null);
     }
   };
 
-  const finalTargetCategory = activeSubCat ? `${activeMainCat?.name} | ${activeSubCat}` : activeMainCat?.name;
-  const filteredProducts = products.filter(p => p.category === finalTargetCategory);
-
   const addToCart = (product, flavor = null) => {
     let cart = JSON.parse(localStorage.getItem('nesk_cart')) || [];
-    
-    // Делаем уникальный ID для каждого вкуса, чтобы в корзине они не смешивались
     const cartItemId = flavor ? `${product.id}-${flavor}` : product.id;
     const cartItemTitle = flavor ? `${product.title} (${flavor})` : product.title;
 
@@ -69,17 +90,13 @@ export default function CatalogPage() {
     else cart.push({ ...product, id: cartItemId, title: cartItemTitle, quantity: 1 });
     
     localStorage.setItem('nesk_cart', JSON.stringify(cart));
-    
     if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
     if (tg?.showAlert) tg.showAlert(`Добавлено: ${cartItemTitle}`);
-    else alert(`Добавлено: ${cartItemTitle}`);
-    
-    // Возвращаемся в каталог после добавления
     handleBack();
   };
 
   const handleDelete = async (id, e) => {
-    e.stopPropagation(); // Чтобы при клике на удаление не открывалась карточка товара
+    e.stopPropagation();
     if (!window.confirm('Точно удалить?')) return;
     try {
       await axios.delete(`/api/admin/products/${id}`, { headers: { 'x-telegram-id': '1044141986' } });
@@ -87,30 +104,37 @@ export default function CatalogPage() {
     } catch (err) { alert('Ошибка'); }
   };
 
+  const getEmptyText = () => {
+    if (mode === 'discounts') return "Скидок пока нет, но они скоро появятся! 🎁";
+    if (mode === 'favorites') return "В избранном пока пусто ❤️";
+    return "В этом разделе пока нет товаров";
+  };
+
   return (
     <div className={view === 'detail' ? "pb-4" : "px-4 pt-4"}>
       
-      {/* КНОПКА НАЗАД (Скрываем на главной и внутри карточки товара, там своя) */}
-      {view !== 'main' && view !== 'detail' && (
+      {/* ДИНАМИЧЕСКИЙ ЗАГОЛОВОК */}
+      {(view === 'products' || view === 'sub') && (
         <div className="flex items-center mb-6 mt-2">
-          <button onClick={handleBack} className="mr-3 bg-[#1a1a1a] p-2 rounded-xl text-white border border-gray-800 hover:bg-gray-800 transition active:scale-95">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-          </button>
-          <h2 className="text-xl font-bold text-white">
-            {view === 'sub' ? activeMainCat.name : activeSubCat || activeMainCat.name}
+          {(mode === 'catalog' && view !== 'main') && (
+            <button onClick={handleBack} className="mr-3 bg-[#1a1a1a] p-2 rounded-xl text-white border border-gray-800 hover:bg-gray-800 transition active:scale-95">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            </button>
+          )}
+          <h2 className="text-xl font-bold text-white border-l-4 border-[#FFD700] pl-2">
+            {mode === 'discounts' ? '🔥 Горячие скидки' : mode === 'favorites' ? '❤️ Избранное' : view === 'sub' ? activeMainCat.name : activeSubCat || activeMainCat.name}
           </h2>
         </div>
       )}
 
-      {/* ШАГ 1: ГЛАВНАЯ СТРАНИЦА */}
-      {view === 'main' && (
+      {/* ШАГ 1: ГЛАВНАЯ СТРАНИЦА КАТАЛОГА */}
+      {view === 'main' && mode === 'catalog' && (
         <>
           <div className="mb-6 p-5 rounded-2xl bg-gradient-to-br from-[#1a1a1a] to-black border border-gray-800 shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative overflow-hidden">
             <div className="absolute -top-10 -right-10 w-40 h-40 bg-[#FFD700] opacity-10 rounded-full blur-3xl"></div>
             <h1 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 relative z-10">
               Выберите <span className="text-[#FFD700]">категорию</span>
             </h1>
-            <p className="text-sm text-gray-500 mt-1 relative z-10">Откройте для себя наш ассортимент</p>
           </div>
           <div className="grid grid-cols-2 gap-4 mb-4">
             {categories.map(c => (
@@ -125,41 +149,59 @@ export default function CatalogPage() {
         </>
       )}
 
-      {/* ШАГ 2: ВЫБОР КРЕПОСТИ (ПОДКАТЕГОРИИ) */}
+      {/* ШАГ 2: ПОДКАТЕГОРИИ */}
       {view === 'sub' && (
         <div className="flex flex-col gap-3">
           {activeMainCat.subcategories.map(sub => (
             <button key={sub} onClick={() => handleSubClick(sub)} className="bg-[#1a1a1a] p-5 rounded-2xl border border-gray-800 text-[#FFD700] font-bold text-lg active:scale-[0.98] transition-all text-left flex justify-between items-center shadow-md">
-              {sub}
-              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              {sub} <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
           ))}
         </div>
       )}
 
-      {/* ШАГ 3: СПИСОК ТОВАРОВ В КАТЕГОРИИ */}
+      {/* ШАГ 3: СПИСОК ТОВАРОВ */}
       {view === 'products' && (
-        filteredProducts.length === 0 ? (
-          <div className="text-center text-gray-500 mt-16 font-medium">В этом разделе пока нет товаров</div>
+        displayProducts.length === 0 ? (
+          <div className="text-center text-gray-500 mt-16 font-medium px-4">{getEmptyText()}</div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {filteredProducts.map(p => {
-               // Достаем описание для карточки, отсекая скрытые вкусы
-               const [desc] = (p.description || '').split('|||');
+            {displayProducts.map(p => {
+               const [desc, flavs, oldPrice] = (p.description || '').split('|||');
+               const isFav = favorites.includes(p.id);
                return (
                 <div key={p.id} onClick={() => handleProductClick(p)} className="bg-[#1a1a1a] rounded-2xl overflow-hidden shadow-lg flex flex-col border border-gray-800 relative active:scale-95 transition-transform cursor-pointer">
+                  
+                  {/* КНОПКА ИЗБРАННОГО НА КАРТОЧКЕ */}
+                  <div className="absolute top-2 right-2 z-10">
+                    <button onClick={(e) => toggleFavorite(e, p.id)} className="p-1.5 bg-black/50 rounded-full backdrop-blur-md">
+                      <svg className={`w-5 h-5 transition-colors ${isFav ? 'text-red-500 fill-red-500' : 'text-white'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+                    </button>
+                  </div>
+
                   {isAdmin && (
-                    <div className="absolute top-2 left-2 flex gap-1 z-10">
+                    <div className="absolute top-2 left-2 z-10">
                       <button onClick={(e) => handleDelete(p.id, e)} className="bg-red-600/90 text-white p-1.5 rounded-lg text-sm">🗑️</button>
                     </div>
                   )}
+                  
                   <div className="h-40 relative">
                     <img src={p.imageUrl} alt={p.title} className="object-cover w-full h-full" />
+                    {oldPrice && <span className="absolute bottom-2 left-2 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">- СКИДКА</span>}
                   </div>
-                  <div className="p-3 flex flex-col flex-grow text-center">
+                  
+                  <div className="p-3 flex flex-col flex-grow text-left">
                     <h3 className="text-sm font-bold text-white leading-tight mb-1">{p.title}</h3>
                     <p className="text-xs text-gray-400 mb-2 line-clamp-1 flex-grow">{desc}</p>
-                    <p className="text-[#FFD700] font-extrabold text-lg">{p.price} ₽</p>
+                    
+                    {oldPrice ? (
+                      <div className="flex items-baseline gap-2 mb-2 mt-auto">
+                        <p className="text-[#FFD700] font-extrabold text-lg">{p.price} ₽</p>
+                        <p className="text-gray-500 line-through text-xs">{oldPrice} ₽</p>
+                      </div>
+                    ) : (
+                      <p className="text-[#FFD700] font-extrabold text-lg mb-2 mt-auto">{p.price} ₽</p>
+                    )}
                   </div>
                 </div>
               );
@@ -168,47 +210,44 @@ export default function CatalogPage() {
         )
       )}
 
-      {/* ШАГ 4: КАРТОЧКА КОНКРЕТНОГО ТОВАРА (С ВЫБОРОМ ВКУСОВ) */}
+      {/* ШАГ 4: СТРАНИЦА ОДНОГО ТОВАРА */}
       {view === 'detail' && activeProduct && (() => {
-        // Достаем текст и список вкусов из нашей склеенной строки
-        const [descText, flavsString] = (activeProduct.description || '').split('|||');
+        const [desc, flavsString, oldPrice] = (activeProduct.description || '').split('|||');
         const flavorsList = flavsString ? flavsString.split(',').map(s => s.trim()).filter(Boolean) : [];
+        const isFav = favorites.includes(activeProduct.id);
 
         return (
           <div className="animate-fade-in pb-10">
-            {/* Большая картинка */}
             <div className="relative h-80 w-full bg-black rounded-b-3xl overflow-hidden shadow-[0_10px_30px_rgba(0,0,0,0.5)] mb-5">
               <img src={activeProduct.imageUrl} className="w-full h-full object-cover opacity-90" />
-              {/* Красивая кнопка назад прямо на картинке */}
               <button onClick={handleBack} className="absolute top-4 left-4 bg-black/60 p-2.5 rounded-full text-white backdrop-blur-md active:scale-90 transition-transform">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
               </button>
-              {/* Градиент снизу картинки */}
+              {/* КНОПКА ИЗБРАННОГО ВНУТРИ ТОВАРА */}
+              <button onClick={(e) => toggleFavorite(e, activeProduct.id)} className="absolute top-4 right-4 bg-black/60 p-2.5 rounded-full backdrop-blur-md active:scale-90 transition-transform">
+                <svg className={`w-6 h-6 ${isFav ? 'text-red-500 fill-red-500' : 'text-white'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
+              </button>
               <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#0a0a0a] to-transparent"></div>
             </div>
 
             <div className="px-5">
               <h1 className="text-3xl font-extrabold text-white mb-1 leading-tight">{activeProduct.title}</h1>
-              <p className="text-[#FFD700] text-2xl font-black mb-4">{activeProduct.price} ₽</p>
+              
+              <div className="flex items-end gap-3 mb-4">
+                 <p className="text-[#FFD700] text-3xl font-black">{activeProduct.price} ₽</p>
+                 {oldPrice && <p className="text-gray-500 line-through text-xl mb-1.5">{oldPrice} ₽</p>}
+              </div>
 
-              {descText && <p className="text-gray-400 text-sm mb-6 leading-relaxed bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800">{descText}</p>}
+              {desc && <p className="text-gray-400 text-sm mb-6 leading-relaxed bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800">{desc}</p>}
 
-              {/* БЛОК С ВЫБОРОМ ВКУСОВ */}
               {flavorsList.length > 0 && (
                 <div className="mb-8">
-                  <h3 className="text-white font-bold mb-3 text-lg flex items-center gap-2">
-                    <span className="text-xl">✨</span> Выберите вкус:
-                  </h3>
+                  <h3 className="text-white font-bold mb-3 text-lg">✨ Выберите вкус:</h3>
                   <div className="flex flex-wrap gap-2">
                     {flavorsList.map(f => (
                       <button
-                        key={f}
-                        onClick={() => setSelectedFlavor(f)}
-                        className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                          selectedFlavor === f 
-                            ? 'bg-[#FFD700] text-black shadow-[0_0_15px_rgba(255,215,0,0.3)] scale-105' 
-                            : 'bg-[#1a1a1a] text-gray-300 border border-gray-700 active:scale-95'
-                        }`}
+                        key={f} onClick={() => setSelectedFlavor(f)}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${selectedFlavor === f ? 'bg-[#FFD700] text-black shadow-[0_0_15px_rgba(255,215,0,0.3)] scale-105' : 'bg-[#1a1a1a] text-gray-300 border border-gray-700 active:scale-95'}`}
                       >
                         {f}
                       </button>
@@ -217,14 +256,9 @@ export default function CatalogPage() {
                 </div>
               )}
 
-              {/* КНОПКА ДОБАВИТЬ В КОРЗИНУ */}
               <button
                 onClick={() => {
-                  if (flavorsList.length > 0 && !selectedFlavor) {
-                    if (tg?.showAlert) tg.showAlert('⚠️ Пожалуйста, выберите вкус перед добавлением в корзину!');
-                    else alert('Пожалуйста, выберите вкус!');
-                    return;
-                  }
+                  if (flavorsList.length > 0 && !selectedFlavor) return alert('Пожалуйста, выберите вкус!');
                   addToCart(activeProduct, selectedFlavor);
                 }}
                 className="w-full bg-[#FFD700] text-black font-extrabold py-4 rounded-2xl text-lg active:scale-95 transition-transform shadow-[0_5px_20px_rgba(255,215,0,0.2)]"
