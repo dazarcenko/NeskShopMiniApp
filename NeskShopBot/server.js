@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { PrismaClient } from '@prisma/client';
 import fs from 'fs'; 
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,8 +12,34 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const prisma = new PrismaClient();
 
-// ⚠️ СПИСОК АДМИНИСТРАТОРОВ (Добавь второй ID в кавычках)
-const ADMIN_IDS = ['1044141986', '1067205524'];
+const ADMIN_IDS = ['1044141986', 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА'];
+const BOT_TOKEN = process.env.bot_token || process.env.BOT_TOKEN;
+
+// 1. ПРОВЕРКА ПОДЛИННОСТИ (Защита от подделки ID)
+function checkTelegramAuth(initData) {
+  if (!initData || !BOT_TOKEN) return false;
+  try {
+    const q = new URLSearchParams(initData);
+    const hash = q.get('hash');
+    q.delete('hash');
+    const keys = Array.from(q.keys()).sort();
+    const dataCheckString = keys.map(k => `${k}=${q.get(k)}`).join('\n');
+    const secretKey = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
+    const hmac = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+    return hmac === hash;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Middleware для защиты админ-маршрутов
+const adminOnly = (req, res, next) => {
+  const tgId = req.headers['x-telegram-id'];
+  const initData = req.headers['x-tg-init-data'];
+  if (!ADMIN_IDS.includes(String(tgId))) return res.status(403).json({ error: 'Нет прав' });
+  if (!checkTelegramAuth(initData)) return res.status(403).json({ error: 'Недействительная подпись Telegram (Попытка взлома)' });
+  next();
+};
 
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -27,21 +54,30 @@ if (!fs.existsSync(categoriesFile)) {
   fs.writeFileSync(categoriesFile, JSON.stringify(defaultCats, null, 2));
 }
 
+// 2. ЗАЩИТА ФАЙЛОВОЙ СИСТЕМЫ (Только картинки, макс 5 МБ)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
 });
-const upload = multer({ storage });
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = /jpeg|jpg|png|webp/;
+    const ext = allowed.test(path.extname(file.originalname).toLowerCase());
+    const mime = allowed.test(file.mimetype);
+    if (ext && mime) cb(null, true);
+    else cb(new Error('Разрешены только изображения (jpg, png, webp)!'));
+  }
+});
 
 app.use(express.json());
 app.use('/uploads', express.static(uploadDir));
 app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
-// --- API КАТЕГОРИЙ ---
 app.get('/api/categories', (req, res) => res.json(JSON.parse(fs.readFileSync(categoriesFile, 'utf8'))));
 
-app.post('/api/admin/categories', upload.single('image'), (req, res) => {
-  if (!ADMIN_IDS.includes(String(req.headers['x-telegram-id']))) return res.status(403).json({ error: 'Нет доступа' });
+app.post('/api/admin/categories', adminOnly, upload.single('image'), (req, res) => {
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   const newCat = {
     id: Date.now().toString(), name: req.body.name,
@@ -53,19 +89,16 @@ app.post('/api/admin/categories', upload.single('image'), (req, res) => {
   res.json(newCat);
 });
 
-app.delete('/api/admin/categories/:id', (req, res) => {
-  if (!ADMIN_IDS.includes(String(req.headers['x-telegram-id']))) return res.status(403).json({ error: 'Нет доступа' });
+app.delete('/api/admin/categories/:id', adminOnly, (req, res) => {
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   fs.writeFileSync(categoriesFile, JSON.stringify(cats.filter(c => c.id !== req.params.id), null, 2));
   res.json({ success: true });
 });
 
-// --- API ТОВАРОВ ---
 app.get('/api/products', async (req, res) => res.json(await prisma.product.findMany()));
 
-app.post('/api/admin/products', upload.single('image'), async (req, res) => {
+app.post('/api/admin/products', adminOnly, upload.single('image'), async (req, res) => {
   try {
-    if (!ADMIN_IDS.includes(String(req.headers['x-telegram-id']))) return res.status(403).json({ error: 'Нет доступа' });
     const { title, price, category, description, flavors, oldPrice } = req.body;
     const finalDesc = `${description || ''}|||${flavors || ''}|||${oldPrice || ''}`;
     const product = await prisma.product.create({
@@ -75,62 +108,36 @@ app.post('/api/admin/products', upload.single('image'), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/admin/products/:id', async (req, res) => {
+app.delete('/api/admin/products/:id', adminOnly, async (req, res) => {
   try {
-    if (!ADMIN_IDS.includes(String(req.headers['x-telegram-id']))) return res.status(403).json({ error: 'Нет доступа' });
     await prisma.product.delete({ where: { id: isNaN(Number(req.params.id)) ? req.params.id : Number(req.params.id) } });
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- API ОФОРМЛЕНИЯ ЗАКАЗА ---
 app.post('/api/orders', async (req, res) => {
   try {
     const { items, totalAmount, buyerName, deliveryMethod, deliveryAddress, note, username } = req.body;
-    const BOT_TOKEN = process.env.bot_token || process.env.BOT_TOKEN;
-    
     if (!BOT_TOKEN) return res.status(500).json({ error: 'Токен бота не настроен' });
 
     const itemsText = items.map(item => `▪️ ${item.title} (x${item.quantity}) — ${item.price * item.quantity} ₽`).join('\n');
-    
-    const message = `
-🚨 <b>НОВЫЙ ЗАКАЗ!</b>
+    const message = `🚨 <b>НОВЫЙ ЗАКАЗ!</b>\n\n👤 <b>Имя:</b> ${buyerName}\n💬 <b>Связь:</b> ${username ? '@' + username : 'Скрыт/Нет юзернейма'}\n🚚 <b>Способ:</b> ${deliveryMethod}\n${deliveryAddress ? `📍 <b>Адрес:</b> ${deliveryAddress}\n` : ''}📝 <b>Примечание:</b> ${note || 'Нет'}\n\n📦 <b>Товары:</b>\n${itemsText}\n\n💰 <b>Сумма к оплате:</b> ${totalAmount} ₽`;
 
-👤 <b>Имя:</b> ${buyerName}
-💬 <b>Связь:</b> ${username ? '@' + username : 'Скрыт/Нет юзернейма'}
-🚚 <b>Способ:</b> ${deliveryMethod}
-${deliveryAddress ? `📍 <b>Адрес:</b> ${deliveryAddress}\n` : ''}📝 <b>Примечание:</b> ${note || 'Нет'}
-
-📦 <b>Товары:</b>
-${itemsText}
-
-💰 <b>Сумма к оплате:</b> ${totalAmount} ₽
-`;
-
-    // Отправляем сообщение ВСЕМ админам из списка
     for (const adminId of ADMIN_IDS) {
       if (adminId && adminId !== 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА') {
         fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: adminId, text: message, parse_mode: 'HTML' })
-        }).catch(err => console.error('Ошибка отправки админу', adminId, err));
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: adminId, text: message, parse_mode: 'HTML' })
+        }).catch(() => {});
       }
     }
-
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'frontend/dist', 'index.html')));
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server on port ${PORT}`));
 
-// --- БОТ ---
-const BOT_TOKEN = process.env.bot_token || process.env.BOT_TOKEN; 
-const WEB_APP_URL = 'https://neskshopminiapp-production.up.railway.app';
 let lastUpdateId = 0;
 async function pollTelegram() {
   if (!BOT_TOKEN) return;
