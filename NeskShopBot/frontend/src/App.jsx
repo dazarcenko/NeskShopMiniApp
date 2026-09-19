@@ -8,6 +8,11 @@ function Navigation() {
   const location = useLocation();
   const isAdmin = location.pathname === '/admin';
 
+  // Получаем данные пользователя из Telegram
+  const tg = window.Telegram?.WebApp;
+  const userId = tg?.initDataUnsafe?.user?.id;
+  const ADMIN_ID = 1044141986; // Ваш ID
+
   return (
     <div className="flex flex-col min-h-screen bg-[#0a0a0a] text-white">
       {/* Шапка */}
@@ -15,12 +20,16 @@ function Navigation() {
         <Link to="/" className="text-xl font-bold tracking-wider">
           Nesk <span className="text-yellow-500">Shop</span>
         </Link>
-        <Link 
-          to={isAdmin ? "/" : "/admin"} 
-          className="text-xs px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-yellow-500 transition-colors"
-        >
-          {isAdmin ? 'Магазин' : 'Админка'}
-        </Link>
+        
+        {/* Кнопка показывается ТОЛЬКО если ID совпадает с вашим */}
+        {userId === ADMIN_ID && (
+          <Link 
+            to={isAdmin ? "/" : "/admin"} 
+            className="text-xs px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-yellow-500 transition-colors"
+          >
+            {isAdmin ? 'Магазин' : 'Админка'}
+          </Link>
+        )}
       </header>
 
       {/* Основной контент */}
