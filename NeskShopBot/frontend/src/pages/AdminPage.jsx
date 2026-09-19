@@ -2,31 +2,26 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 
 export default function AdminPage() {
-  const [tab, setTab] = useState('products'); // 'products' или 'categories'
+  const [tab, setTab] = useState('products'); 
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const tg = window.Telegram?.WebApp;
   const ADMIN_ID = '1044141986';
 
-  // Состояния для товаров
-  const [formData, setFormData] = useState({ title: '', price: '', mainCat: '', subCat: '', description: '' });
+  // В formData добавилось поле flavors
+  const [formData, setFormData] = useState({ title: '', price: '', mainCat: '', subCat: '', description: '', flavors: '' });
   const [image, setImage] = useState(null);
 
-  // Состояния для новой категории
   const [catData, setCatData] = useState({ name: '', subcategories: '' });
   const [catImage, setCatImage] = useState(null);
 
-  useEffect(() => {
-    fetchCategories();
-  }, []);
+  useEffect(() => { fetchCategories(); }, []);
 
   const fetchCategories = async () => {
     try {
       const res = await axios.get('/api/categories');
       setCategories(res.data);
-      if (res.data.length > 0 && !formData.mainCat) {
-        updateFormCat(res.data[0].name, res.data);
-      }
+      if (res.data.length > 0 && !formData.mainCat) updateFormCat(res.data[0].name, res.data);
     } catch (e) { console.error(e); }
   };
 
@@ -36,13 +31,11 @@ export default function AdminPage() {
     setFormData(prev => ({ ...prev, mainCat: mainName, subCat: sub }));
   };
 
-  // Добавление товара
   const handleProductSubmit = async (e) => {
     e.preventDefault();
     if (!image) return alert('Выберите картинку!');
     setLoading(true);
     
-    // Формируем финальную строку категории (например: "Жидкости | 50 мг")
     const finalCategory = formData.subCat ? `${formData.mainCat} | ${formData.subCat}` : formData.mainCat;
 
     const data = new FormData();
@@ -50,22 +43,22 @@ export default function AdminPage() {
     data.append('price', formData.price);
     data.append('category', finalCategory);
     data.append('description', formData.description);
+    data.append('flavors', formData.flavors); // Отправляем вкусы на сервер
     data.append('image', image);
 
     try {
       await axios.post('/api/admin/products', data, { headers: { 'x-telegram-id': ADMIN_ID } });
       if(tg?.showAlert) tg.showAlert('Товар добавлен!');
-      setFormData({ ...formData, title: '', price: '', description: '' });
+      setFormData({ ...formData, title: '', price: '', description: '', flavors: '' });
       setImage(null);
       document.getElementById('fileInput').value = '';
     } catch (err) { alert('Ошибка'); } 
     finally { setLoading(false); }
   };
 
-  // Добавление категории
   const handleCatSubmit = async (e) => {
     e.preventDefault();
-    if (!catImage) return alert('Выберите картинку для категории!');
+    if (!catImage) return alert('Выберите картинку!');
     setLoading(true);
     const data = new FormData();
     data.append('name', catData.name);
@@ -96,7 +89,6 @@ export default function AdminPage() {
     <div className="bg-[#1a1a1a] p-4 rounded-xl border border-gray-800 mb-10">
       <h2 className="text-xl font-bold mb-4 text-[#FFD700]">Панель Администратора</h2>
       
-      {/* Переключатель вкладок */}
       <div className="flex gap-2 mb-6">
         <button onClick={() => setTab('products')} className={`flex-1 py-2 font-bold rounded-lg ${tab === 'products' ? 'bg-[#FFD700] text-black' : 'bg-black text-white border border-gray-700'}`}>Добавить товар</button>
         <button onClick={() => setTab('categories')} className={`flex-1 py-2 font-bold rounded-lg ${tab === 'categories' ? 'bg-[#FFD700] text-black' : 'bg-black text-white border border-gray-700'}`}>Категории</button>
@@ -110,12 +102,14 @@ export default function AdminPage() {
           <select value={formData.mainCat} onChange={e => updateFormCat(e.target.value)} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]">
             {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
           </select>
-
           {activeCatObj?.subcategories?.length > 0 && (
             <select value={formData.subCat} onChange={e => setFormData({...formData, subCat: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]">
               {activeCatObj.subcategories.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
+
+          {/* НОВОЕ ПОЛЕ ДЛЯ ВКУСОВ */}
+          <input type="text" placeholder="Вкусы через запятую (Мята, Яблоко, Лесные ягоды)" value={formData.flavors} onChange={e => setFormData({...formData, flavors: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
 
           <textarea placeholder="Описание" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white min-h-[80px] outline-none focus:border-[#FFD700]"/>
           <div className="bg-black border border-gray-700 rounded-lg p-3">
@@ -135,7 +129,6 @@ export default function AdminPage() {
               </div>
             ))}
           </div>
-
           <form onSubmit={handleCatSubmit} className="flex flex-col gap-3 mt-4 border-t border-gray-800 pt-4">
             <h3 className="text-white font-bold">Создать новую:</h3>
             <input type="text" placeholder="Название (например: Жидкости)" required value={catData.name} onChange={e => setCatData({...catData, name: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
