@@ -34,7 +34,6 @@ app.use(express.json());
 app.use('/uploads', express.static(uploadDir));
 app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
-// --- API КАТЕГОРИЙ ---
 app.get('/api/categories', (req, res) => {
   const cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   res.json(cats);
@@ -43,11 +42,9 @@ app.get('/api/categories', (req, res) => {
 app.post('/api/admin/categories', upload.single('image'), (req, res) => {
   const tgId = req.headers['x-telegram-id'];
   if (String(tgId) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
-
   const { name, subcategories } = req.body;
   const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
-  
   const newCat = {
     id: Date.now().toString(), name,
     image: imageUrl || 'https://via.placeholder.com/400/1a1a1a/FFD700?text=' + name,
@@ -67,23 +64,22 @@ app.delete('/api/admin/categories/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// --- API ТОВАРОВ ---
 app.get('/api/products', async (req, res) => {
   const products = await prisma.product.findMany();
   res.json(products);
 });
 
-// Добавление товара (Теперь с поддержкой вкусов)
 app.post('/api/admin/products', upload.single('image'), async (req, res) => {
   try {
     const tgId = req.headers['x-telegram-id'];
     if (String(tgId) !== '1044141986') return res.status(403).json({ error: 'Нет доступа' });
     
-    const { title, price, category, description, flavors } = req.body;
+    // ДОБАВИЛИ oldPrice (Старую цену)
+    const { title, price, category, description, flavors, oldPrice } = req.body;
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
     
-    // Склеиваем описание и вкусы в одну строку для базы данных
-    const finalDesc = (description || '') + (flavors ? '|||' + flavors : '');
+    // Склеиваем всё в одну строку для базы
+    const finalDesc = `${description || ''}|||${flavors || ''}|||${oldPrice || ''}`;
 
     const product = await prisma.product.create({
       data: { title, price: Number(price), category, description: finalDesc, imageUrl: imageUrl || '' }
