@@ -1,25 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// ⚠️ ВПИШИ СВОИ АДРЕСА САМОВЫВОЗА ВОТ ЗДЕСЬ (Вместо Пункт 1, 2 и тд):
+// ТВОИ РЕАЛЬНЫЕ АДРЕСА САМОВЫВОЗА + ДОСТАВКА
 const DELIVERY_OPTIONS = [
-  "Самовывоз: Пункт 1 (Ул. Примерная, 10)",
-  "Самовывоз: Пункт 2 (ТЦ Галерея)",
-  "Самовывоз: Пункт 3 (Метро Центр)",
-  "Самовывоз: Пункт 4 (Район Северный)",
+  "Самовывоз: Московский 64А (Уточнять у нас)",
+  "Самовывоз: Людников 16 (Уточнять у нас)",
+  "Самовывоз: ТЦ Пирамида",
+  "Самовывоз: Мак.By",
   "Доставка курьером"
 ];
 
 export default function CartPage() {
   const [cart, setCart] = useState([]);
-  const [isCheckout, setIsCheckout] = useState(false); // Открыто ли меню заказа
+  const [isCheckout, setIsCheckout] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Данные для оформления заказа
   const tg = window.Telegram?.WebApp;
   const user = tg?.initDataUnsafe?.user;
   
   const [buyerName, setBuyerName] = useState(user?.first_name || '');
+  // По умолчанию выбран первый пункт самовывоза
   const [deliveryMethod, setDeliveryMethod] = useState(DELIVERY_OPTIONS[0]);
   const [address, setAddress] = useState('');
   const [note, setNote] = useState('');
@@ -51,11 +51,12 @@ export default function CartPage() {
     if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
   };
 
-  // Расчеты сумм
   const itemsSum = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const itemsCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  
+  // Проверка: если выбрана доставка, прибавляем 3 рубля
   const isDelivery = deliveryMethod === "Доставка курьером";
-  const finalTotal = itemsSum + (isDelivery ? 3 : 0); // +3 рубля за доставку
+  const finalTotal = itemsSum + (isDelivery ? 3 : 0);
 
   const handleOrderSubmit = async (e) => {
     e.preventDefault();
@@ -65,7 +66,6 @@ export default function CartPage() {
     
     setLoading(true);
     try {
-      // 1. Отправляем заказ на сервер (админу в ТГ)
       await axios.post('/api/orders', {
         items: cart,
         totalAmount: finalTotal,
@@ -76,13 +76,11 @@ export default function CartPage() {
         username: user?.username || ''
       });
 
-      // 2. Обновляем статистику для Профиля
       const savedStats = JSON.parse(localStorage.getItem('nesk_user_stats')) || { totalOrders: 0, totalSpent: 0 };
       savedStats.totalOrders += 1;
       savedStats.totalSpent += finalTotal;
       localStorage.setItem('nesk_user_stats', JSON.stringify(savedStats));
 
-      // 3. Сохраняем в Историю заказов
       const savedOrders = JSON.parse(localStorage.getItem('nesk_orders')) || [];
       const date = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
       savedOrders.push({
@@ -92,7 +90,6 @@ export default function CartPage() {
       });
       localStorage.setItem('nesk_orders', JSON.stringify(savedOrders));
 
-      // 4. Очищаем корзину и радуем пользователя
       updateCart([]);
       setIsCheckout(false);
       
@@ -153,7 +150,6 @@ export default function CartPage() {
         </>
       )}
 
-      {/* --- МЕНЮ ОФОРМЛЕНИЯ ЗАКАЗА (МОДАЛЬНОЕ ОКНО) --- */}
       {isCheckout && (
         <div className="fixed inset-0 bg-[#0a0a0a] z-50 overflow-y-auto pb-20 animate-slide-up">
           <div className="p-4 pt-6">
@@ -224,7 +220,6 @@ export default function CartPage() {
                   {loading ? 'Отправка...' : 'Сделать заказ'}
                 </button>
               </div>
-
             </form>
           </div>
         </div>
