@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// Мы принимаем параметр mode ('catalog', 'discounts' или 'favorites')
 export default function CatalogPage({ mode = 'catalog' }) {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [favorites, setFavorites] = useState(JSON.parse(localStorage.getItem('nesk_favorites')) || []);
   
-  // Если мы в каталоге — показываем категории. Если в скидках или избранном — сразу товары
   const [view, setView] = useState(mode === 'catalog' ? 'main' : 'products'); 
   const [activeMainCat, setActiveMainCat] = useState(null);
   const [activeSubCat, setActiveSubCat] = useState(null);
@@ -15,7 +13,11 @@ export default function CatalogPage({ mode = 'catalog' }) {
   const [selectedFlavor, setSelectedFlavor] = useState(null);
 
   const tg = window.Telegram?.WebApp;
-  const isAdmin = String(tg?.initDataUnsafe?.user?.id) === '1044141986';
+  const userId = String(tg?.initDataUnsafe?.user?.id);
+  
+  // ⚠️ СПИСОК АДМИНИСТРАТОРОВ (Здесь тоже впиши)
+  const ADMIN_IDS = ['1044141986', '1067205524'];
+  const isAdmin = ADMIN_IDS.includes(userId);
 
   useEffect(() => {
     setView(mode === 'catalog' ? 'main' : 'products');
@@ -24,7 +26,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
     axios.get('/api/products').then(res => setProducts(res.data)).catch(console.error);
   }, [mode]);
 
-  // ФИЛЬТРАЦИЯ ТОВАРОВ В ЗАВИСИМОСТИ ОТ ВЫБРАННОЙ ВКЛАДКИ
   let displayProducts = [];
   if (mode === 'catalog') {
     const finalCat = activeSubCat ? `${activeMainCat?.name} | ${activeSubCat}` : activeMainCat?.name;
@@ -32,7 +33,7 @@ export default function CatalogPage({ mode = 'catalog' }) {
   } else if (mode === 'discounts') {
     displayProducts = products.filter(p => {
       const parts = (p.description || '').split('|||');
-      return parts[2] && parts[2].trim() !== ''; // Есть старая цена
+      return parts[2] && parts[2].trim() !== ''; 
     });
   } else if (mode === 'favorites') {
     displayProducts = products.filter(p => favorites.includes(p.id));
@@ -99,7 +100,8 @@ export default function CatalogPage({ mode = 'catalog' }) {
     e.stopPropagation();
     if (!window.confirm('Точно удалить?')) return;
     try {
-      await axios.delete(`/api/admin/products/${id}`, { headers: { 'x-telegram-id': '1044141986' } });
+      // Отправляем ID текущего админа для проверки на сервере
+      await axios.delete(`/api/admin/products/${id}`, { headers: { 'x-telegram-id': userId } });
       setProducts(products.filter(p => p.id !== id));
     } catch (err) { alert('Ошибка'); }
   };
@@ -112,8 +114,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
 
   return (
     <div className={view === 'detail' ? "pb-4" : "px-4 pt-4"}>
-      
-      {/* ДИНАМИЧЕСКИЙ ЗАГОЛОВОК */}
       {(view === 'products' || view === 'sub') && (
         <div className="flex items-center mb-6 mt-2">
           {(mode === 'catalog' && view !== 'main') && (
@@ -127,7 +127,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
         </div>
       )}
 
-      {/* ШАГ 1: ГЛАВНАЯ СТРАНИЦА КАТАЛОГА */}
       {view === 'main' && mode === 'catalog' && (
         <>
           <div className="mb-6 p-5 rounded-2xl bg-gradient-to-br from-[#1a1a1a] to-black border border-gray-800 shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative overflow-hidden">
@@ -149,7 +148,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
         </>
       )}
 
-      {/* ШАГ 2: ПОДКАТЕГОРИИ */}
       {view === 'sub' && (
         <div className="flex flex-col gap-3">
           {activeMainCat.subcategories.map(sub => (
@@ -160,7 +158,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
         </div>
       )}
 
-      {/* ШАГ 3: СПИСОК ТОВАРОВ */}
       {view === 'products' && (
         displayProducts.length === 0 ? (
           <div className="text-center text-gray-500 mt-16 font-medium px-4">{getEmptyText()}</div>
@@ -172,7 +169,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
                return (
                 <div key={p.id} onClick={() => handleProductClick(p)} className="bg-[#1a1a1a] rounded-2xl overflow-hidden shadow-lg flex flex-col border border-gray-800 relative active:scale-95 transition-transform cursor-pointer">
                   
-                  {/* КНОПКА ИЗБРАННОГО НА КАРТОЧКЕ */}
                   <div className="absolute top-2 right-2 z-10">
                     <button onClick={(e) => toggleFavorite(e, p.id)} className="p-1.5 bg-black/50 rounded-full backdrop-blur-md">
                       <svg className={`w-5 h-5 transition-colors ${isFav ? 'text-red-500 fill-red-500' : 'text-white'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
@@ -210,7 +206,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
         )
       )}
 
-      {/* ШАГ 4: СТРАНИЦА ОДНОГО ТОВАРА */}
       {view === 'detail' && activeProduct && (() => {
         const [desc, flavsString, oldPrice] = (activeProduct.description || '').split('|||');
         const flavorsList = flavsString ? flavsString.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -223,7 +218,6 @@ export default function CatalogPage({ mode = 'catalog' }) {
               <button onClick={handleBack} className="absolute top-4 left-4 bg-black/60 p-2.5 rounded-full text-white backdrop-blur-md active:scale-90 transition-transform">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
               </button>
-              {/* КНОПКА ИЗБРАННОГО ВНУТРИ ТОВАРА */}
               <button onClick={(e) => toggleFavorite(e, activeProduct.id)} className="absolute top-4 right-4 bg-black/60 p-2.5 rounded-full backdrop-blur-md active:scale-90 transition-transform">
                 <svg className={`w-6 h-6 ${isFav ? 'text-red-500 fill-red-500' : 'text-white'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
               </button>
