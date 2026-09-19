@@ -7,9 +7,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
 
   const tg = window.Telegram?.WebApp;
-  // ВАЖНО: Тут тоже должен быть твой ID админа, как в App.jsx
-  const tgId = tg?.initDataUnsafe?.user?.id || 123456789; 
-
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!image) return alert('Выберите картинку!');
@@ -26,9 +24,11 @@ export default function AdminPage() {
       await axios.post('/api/admin/products', data, {
         headers: { 
           'Content-Type': 'multipart/form-data',
-          'x-telegram-id': tgId 
+          // ВАЖНО: Жестко прописываем твой ID, который ждет сервер
+          'x-telegram-id': '1044141986' 
         }
       });
+      
       if(tg && tg.showAlert) tg.showAlert('Товар успешно добавлен!');
       else alert('Успешно!');
       
