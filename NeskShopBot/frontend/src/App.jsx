@@ -3,17 +3,19 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-do
 import CatalogPage from './pages/CatalogPage';
 import CartPage from './pages/CartPage';
 import AdminPage from './pages/AdminPage';
-import ProfilePage from './pages/ProfilePage'; // Ваш новый импорт
+import ProfilePage from './pages/ProfilePage';
 
 function Navigation() {
   const location = useLocation();
-  const isAdmin = location.pathname === '/admin';
-  // ... дальше идет остальной код
+  const isAdminPath = location.pathname === '/admin';
   const currentPath = location.pathname;
 
   const tg = window.Telegram?.WebApp;
-  const userId = tg?.initDataUnsafe?.user?.id;
-  const ADMIN_ID = 1044141986;
+  const userId = String(tg?.initDataUnsafe?.user?.id);
+  
+  // ⚠️ СПИСОК АДМИНИСТРАТОРОВ ФРОНТЕНД
+  const ADMIN_IDS = ['1044141986', 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА'];
+  const hasAdminAccess = ADMIN_IDS.includes(userId);
 
   return (
     <div className="flex flex-col min-h-screen bg-[#0a0a0a] text-white">
@@ -21,27 +23,25 @@ function Navigation() {
         <Link to="/" className="text-xl font-bold tracking-wider">
           Nesk <span className="text-[#FFD700]">Shop</span>
         </Link>
-        {userId === ADMIN_ID && (
-          <Link to={isAdmin ? "/" : "/admin"} className="text-xs px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-[#FFD700] transition-colors">
-            {isAdmin ? 'Магазин' : 'Админка'}
+        {hasAdminAccess && (
+          <Link to={isAdminPath ? "/" : "/admin"} className="text-xs px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-[#FFD700] transition-colors">
+            {isAdminPath ? 'Магазин' : 'Админка'}
           </Link>
         )}
       </header>
 
       <main className="flex-1 pb-28">
         <Routes>
-          {/* ИСПРАВЛЕНИЕ ЗДЕСЬ: Добавлены свойства key. Теперь страницы не будут конфликтовать! */}
           <Route path="/" element={<CatalogPage key="catalog" mode="catalog" />} />
           <Route path="/discounts" element={<CatalogPage key="discounts" mode="discounts" />} />
           <Route path="/favorites" element={<CatalogPage key="favorites" mode="favorites" />} />
-          
           <Route path="/cart" element={<CartPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Routes>
       </main>
 
-      {!isAdmin && (
+      {!isAdminPath && (
         <nav className="fixed bottom-0 left-0 right-0 bg-[#121212]/95 backdrop-blur-lg border-t border-neutral-800 pb-2 pt-2 z-50">
           <div className="flex justify-around items-end px-2">
             
