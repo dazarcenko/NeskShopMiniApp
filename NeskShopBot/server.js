@@ -15,7 +15,6 @@ const prisma = new PrismaClient();
 const ADMIN_IDS = ['1044141986', 'ВСТАВЬ_ВТОРОЙ_ID_СЮДА'];
 const BOT_TOKEN = process.env.bot_token || process.env.BOT_TOKEN;
 
-// 1. ПРОВЕРКА ПОДЛИННОСТИ (Защита от подделки ID)
 function checkTelegramAuth(initData) {
   if (!initData || !BOT_TOKEN) return false;
   try {
@@ -32,7 +31,6 @@ function checkTelegramAuth(initData) {
   }
 }
 
-// Middleware для защиты админ-маршрутов
 const adminOnly = (req, res, next) => {
   const tgId = req.headers['x-telegram-id'];
   const initData = req.headers['x-tg-init-data'];
@@ -54,7 +52,6 @@ if (!fs.existsSync(categoriesFile)) {
   fs.writeFileSync(categoriesFile, JSON.stringify(defaultCats, null, 2));
 }
 
-// 2. ЗАЩИТА ФАЙЛОВОЙ СИСТЕМЫ (Только картинки, макс 5 МБ)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
@@ -75,6 +72,7 @@ app.use(express.json());
 app.use('/uploads', express.static(uploadDir));
 app.use(express.static(path.join(__dirname, 'frontend/dist')));
 
+// --- КАТЕГОРИИ ---
 app.get('/api/categories', (req, res) => res.json(JSON.parse(fs.readFileSync(categoriesFile, 'utf8'))));
 
 app.post('/api/admin/categories', adminOnly, upload.single('image'), (req, res) => {
@@ -89,12 +87,29 @@ app.post('/api/admin/categories', adminOnly, upload.single('image'), (req, res) 
   res.json(newCat);
 });
 
+// НОВОЕ: Редактирование категории
+app.put('/api/admin/categories/:id', adminOnly, upload.single('image'), (req, res) => {
+  let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
+  const index = cats.findIndex(c => c.id === req.params.id);
+  if (index === -1) return res.status(404).json({ error: 'Не найдено' });
+
+  cats[index].name = req.body.name || cats[index].name;
+  if (req.body.subcategories !== undefined) {
+    cats[index].subcategories = req.body.subcategories ? req.body.subcategories.split(',').map(s => s.trim()).filter(s => s) : [];
+  }
+  if (req.file) cats[index].image = `/uploads/${req.file.filename}`;
+  
+  fs.writeFileSync(categoriesFile, JSON.stringify(cats, null, 2));
+  res.json(cats[index]);
+});
+
 app.delete('/api/admin/categories/:id', adminOnly, (req, res) => {
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   fs.writeFileSync(categoriesFile, JSON.stringify(cats.filter(c => c.id !== req.params.id), null, 2));
   res.json({ success: true });
 });
 
+// --- ТОВАРЫ ---
 app.get('/api/products', async (req, res) => res.json(await prisma.product.findMany()));
 
 app.post('/api/admin/products', adminOnly, upload.single('image'), async (req, res) => {
@@ -108,6 +123,22 @@ app.post('/api/admin/products', adminOnly, upload.single('image'), async (req, r
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// НОВОЕ: Редактирование товара
+app.put('/api/admin/products/:id', adminOnly, upload.single('image'), async (req, res) => {
+  try {
+    const { title, price, category, description, flavors, oldPrice } = req.body;
+    const finalDesc = `${description || ''}|||${flavors || ''}|||${oldPrice || ''}`;
+    const updateData = { title, price: Number(price), category, description: finalDesc };
+    if (req.file) updateData.imageUrl = `/uploads/${req.file.filename}`;
+
+    const product = await prisma.product.update({
+      where: { id: isNaN(Number(req.params.id)) ? req.params.id : Number(req.params.id) },
+      data: updateData
+    });
+    res.json(product);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.delete('/api/admin/products/:id', adminOnly, async (req, res) => {
   try {
     await prisma.product.delete({ where: { id: isNaN(Number(req.params.id)) ? req.params.id : Number(req.params.id) } });
@@ -115,6 +146,7 @@ app.delete('/api/admin/products/:id', adminOnly, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- ЗАКАЗЫ И БОТ ---
 app.post('/api/orders', async (req, res) => {
   try {
     const { items, totalAmount, buyerName, deliveryMethod, deliveryAddress, note, username } = req.body;
