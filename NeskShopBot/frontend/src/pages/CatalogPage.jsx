@@ -4,6 +4,11 @@ import axios from 'axios';
 export default function CatalogPage({ mode = 'catalog' }) {
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
+  
+  // Метаданные (Отзывы и Закрепленные товары)
+  const [reviews, setReviews] = useState({});
+  const [pinned, setPinned] = useState([]);
+  
   const [favorites, setFavorites] = useState(JSON.parse(localStorage.getItem('nesk_favorites')) || []);
   
   const [view, setView] = useState(mode === 'catalog' ? 'main' : 'products'); 
@@ -12,22 +17,34 @@ export default function CatalogPage({ mode = 'catalog' }) {
   const [activeProduct, setActiveProduct] = useState(null);
   const [selectedFlavor, setSelectedFlavor] = useState(null);
 
+  // Форма отзыва
+  const [reviewText, setReviewText] = useState('');
+  const [reviewRating, setReviewRating] = useState(5);
+
   const [editingProduct, setEditingProduct] = useState(null);
   const [editForm, setEditForm] = useState({ title: '', price: '', oldPrice: '', mainCat: '', subCat: '', description: '', flavors: '' });
   const [editImage, setEditImage] = useState(null);
 
   const tg = window.Telegram?.WebApp;
-  const userId = String(tg?.initDataUnsafe?.user?.id);
+  const user = tg?.initDataUnsafe?.user;
+  const userId = String(user?.id);
+  const initData = tg?.initData;
   
-  // ⚠️ ВПИШИ ОБА ID СЮДА
   const ADMIN_IDS = ['1044141986', '1067205524'];
   const isAdmin = ADMIN_IDS.includes(userId);
 
   useEffect(() => {
     setView(mode === 'catalog' ? 'main' : 'products');
     setActiveProduct(null);
+    
     axios.get('/api/categories').then(res => setCategories(res.data)).catch(console.error);
     axios.get('/api/products').then(res => setProducts(res.data)).catch(console.error);
+    
+    // Подгружаем отзывы и закрепы
+    axios.get('/api/product-meta').then(res => {
+      setReviews(res.data.reviews || {});
+      setPinned(res.data.pinned || []);
+    }).catch(console.error);
   }, [mode]);
 
   let displayProducts = [];
@@ -43,6 +60,15 @@ export default function CatalogPage({ mode = 'catalog' }) {
     displayProducts = products.filter(p => favorites.includes(p.id));
   }
 
+  // --- СОРТИРОВКА ТОВАРОВ (ЗАКРЕПЛЕННЫЕ ВСЕГДА СВЕРХУ) ---
+  const sortedProducts = [...displayProducts].sort((a, b) => {
+    const aPin = pinned.includes(String(a.id));
+    const bPin = pinned.includes(String(b.id));
+    if (aPin && !bPin) return -1; // a идет перед b
+    if (!aPin && bPin) return 1;  // b идет перед a
+    return 0; // если оба закреплены или оба нет — оставляем как есть
+  });
+
   const toggleFavorite = (e, id) => {
     e.stopPropagation();
     let favs = [...favorites];
@@ -51,6 +77,36 @@ export default function CatalogPage({ mode = 'catalog' }) {
     setFavorites(favs);
     localStorage.setItem('nesk_favorites', JSON.stringify(favs));
     if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+  };
+
+  const togglePin = async (id, e) => {
+    e.stopPropagation();
+    try {
+      const res = await axios.post(`/api/admin/pin/${id}`, {}, {
+        headers: { 'x-telegram-id': userId, 'x-tg-init-data': initData }
+      });
+      setPinned(res.data);
+      if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+    } catch (err) { alert('Ошибка при закреплении'); }
+  };
+
+  const submitReview = async (e) => {
+    e.preventDefault();
+    if (!reviewText.trim()) return alert('Напишите текст отзыва!');
+    
+    try {
+      const res = await axios.post('/api/reviews', {
+        productId: activeProduct.id,
+        user: user?.first_name || 'Покупатель',
+        rating: reviewRating,
+        text: reviewText
+      });
+      
+      setReviews(prev => ({ ...prev, [activeProduct.id]: res.data }));
+      setReviewText('');
+      setReviewRating(5);
+      if (tg?.showAlert) tg.showAlert('Отзыв успешно добавлен!');
+    } catch (err) { alert('Ошибка при отправке отзыва'); }
   };
 
   const handleCategoryClick = (cat) => {
@@ -104,10 +160,7 @@ export default function CatalogPage({ mode = 'catalog' }) {
     e.stopPropagation();
     if (!window.confirm('Точно удалить?')) return;
     try {
-      // Отправляем ID текущего пользователя
-      await axios.delete(`/api/admin/products/${id}`, { 
-        headers: { 'x-telegram-id': userId } 
-      });
+      await axios.delete(`/api/admin/products/${id}`, { headers: { 'x-telegram-id': userId, 'x-tg-init-data': initData } });
       setProducts(products.filter(p => p.id !== id));
     } catch (err) { alert(err.response?.data?.error || 'Ошибка'); }
   };
@@ -116,12 +169,7 @@ export default function CatalogPage({ mode = 'catalog' }) {
     e.stopPropagation();
     const [desc, flavs, oldPrice] = (p.description || '').split('|||');
     const [mainCat, subCat] = (p.category || '').split(' | ');
-    
-    setEditForm({
-      title: p.title, price: p.price, oldPrice: oldPrice || '',
-      mainCat: mainCat || '', subCat: subCat || '',
-      description: desc || '', flavors: flavs || ''
-    });
+    setEditForm({ title: p.title, price: p.price, oldPrice: oldPrice || '', mainCat: mainCat || '', subCat: subCat || '', description: desc || '', flavors: flavs || '' });
     setEditingProduct(p);
     setEditImage(null);
   };
@@ -129,32 +177,17 @@ export default function CatalogPage({ mode = 'catalog' }) {
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     const finalCategory = editForm.subCat ? `${editForm.mainCat} | ${editForm.subCat}` : editForm.mainCat;
-    
     const data = new FormData();
-    data.append('title', editForm.title);
-    data.append('price', editForm.price);
-    data.append('oldPrice', editForm.oldPrice);
-    data.append('category', finalCategory);
-    data.append('description', editForm.description);
-    data.append('flavors', editForm.flavors);
+    data.append('title', editForm.title); data.append('price', editForm.price); data.append('oldPrice', editForm.oldPrice);
+    data.append('category', finalCategory); data.append('description', editForm.description); data.append('flavors', editForm.flavors);
     if (editImage) data.append('image', editImage);
 
     try {
-      const res = await axios.put(`/api/admin/products/${editingProduct.id}`, data, {
-        headers: { 'x-telegram-id': userId }
-      });
+      const res = await axios.put(`/api/admin/products/${editingProduct.id}`, data, { headers: { 'x-telegram-id': userId, 'x-tg-init-data': initData } });
       setProducts(products.map(p => p.id === editingProduct.id ? res.data : p));
       setEditingProduct(null);
       if (tg?.showAlert) tg.showAlert('Товар успешно обновлен!');
-    } catch (err) {
-      alert(err.response?.data?.error || 'Ошибка');
-    }
-  };
-
-  const getEmptyText = () => {
-    if (mode === 'discounts') return "Скидок пока нет, но они скоро появятся! 🎁";
-    if (mode === 'favorites') return "В избранном пока пусто ❤️";
-    return "В этом разделе пока нет товаров";
+    } catch (err) { alert(err.response?.data?.error || 'Ошибка'); }
   };
 
   return (
@@ -204,25 +237,38 @@ export default function CatalogPage({ mode = 'catalog' }) {
       )}
 
       {view === 'products' && (
-        displayProducts.length === 0 ? (
-          <div className="text-center text-gray-500 mt-16 font-medium px-4">{getEmptyText()}</div>
+        sortedProducts.length === 0 ? (
+          <div className="text-center text-gray-500 mt-16 font-medium px-4">{mode === 'discounts' ? "Скидок пока нет! 🎁" : mode === 'favorites' ? "В избранном пока пусто ❤️" : "Товаров пока нет"}</div>
         ) : (
           <div className="grid grid-cols-2 gap-3 mb-10">
-            {displayProducts.map(p => {
+            {sortedProducts.map(p => {
                const [desc, flavs, oldPrice] = (p.description || '').split('|||');
                const isFav = favorites.includes(p.id);
+               const isPinned = pinned.includes(String(p.id));
+               
+               // Подсчет среднего рейтинга для маленькой карточки
+               const prodReviews = reviews[p.id] || [];
+               const avgRating = prodReviews.length > 0 
+                  ? (prodReviews.reduce((sum, r) => sum + r.rating, 0) / prodReviews.length).toFixed(1) 
+                  : null;
+
                return (
                 <div key={p.id} onClick={() => handleProductClick(p)} className="bg-[#1a1a1a] rounded-2xl overflow-hidden shadow-lg flex flex-col border border-gray-800 relative active:scale-95 transition-transform cursor-pointer">
                   
-                  <div className="absolute top-2 right-2 z-10">
+                  <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 items-end">
                     <button onClick={(e) => toggleFavorite(e, p.id)} className="p-1.5 bg-black/50 rounded-full backdrop-blur-md">
                       <svg className={`w-5 h-5 transition-colors ${isFav ? 'text-red-500 fill-red-500' : 'text-white'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
                     </button>
+                    {isPinned && !isAdmin && (
+                      <span className="bg-[#FFD700] text-black text-[10px] font-extrabold px-2 py-1 rounded-lg shadow-md mt-1">📌 ТОП</span>
+                    )}
                   </div>
 
+                  {/* КНОПКИ АДМИНА (ВКЛЮЧАЯ ЗАКРЕП 📌) */}
                   {isAdmin && (
                     <div className="absolute top-2 left-2 flex gap-1 z-10">
                       <button onClick={(e) => openEditModal(p, e)} className="bg-blue-600/90 text-white p-1.5 rounded-lg text-sm shadow-md">✏️</button>
+                      <button onClick={(e) => togglePin(p.id, e)} className={`p-1.5 rounded-lg text-sm shadow-md ${isPinned ? 'bg-[#FFD700] text-black' : 'bg-gray-600/90 text-white'}`}>📌</button>
                       <button onClick={(e) => handleDelete(p.id, e)} className="bg-red-600/90 text-white p-1.5 rounded-lg text-sm shadow-md">🗑️</button>
                     </div>
                   )}
@@ -234,6 +280,15 @@ export default function CatalogPage({ mode = 'catalog' }) {
                   
                   <div className="p-3 flex flex-col flex-grow text-left">
                     <h3 className="text-sm font-bold text-white leading-tight mb-1">{p.title}</h3>
+                    
+                    {/* Рейтинг на маленькой карточке */}
+                    {avgRating && (
+                      <div className="flex items-center gap-1 mb-1">
+                        <span className="text-[#FFD700] text-[10px]">★</span>
+                        <span className="text-gray-400 text-[10px] font-bold">{avgRating}</span>
+                      </div>
+                    )}
+                    
                     <p className="text-xs text-gray-400 mb-2 line-clamp-1 flex-grow">{desc}</p>
                     
                     {oldPrice ? (
@@ -252,10 +307,16 @@ export default function CatalogPage({ mode = 'catalog' }) {
         )
       )}
 
+      {/* --- СТРАНИЦА ОДНОГО ТОВАРА + ОТЗЫВЫ --- */}
       {view === 'detail' && activeProduct && (() => {
         const [desc, flavsString, oldPrice] = (activeProduct.description || '').split('|||');
         const flavorsList = flavsString ? flavsString.split(',').map(s => s.trim()).filter(Boolean) : [];
         const isFav = favorites.includes(activeProduct.id);
+        
+        const prodReviews = reviews[activeProduct.id] || [];
+        const avgRating = prodReviews.length > 0 
+            ? (prodReviews.reduce((sum, r) => sum + r.rating, 0) / prodReviews.length).toFixed(1) 
+            : null;
 
         return (
           <div className="animate-fade-in pb-10">
@@ -273,7 +334,16 @@ export default function CatalogPage({ mode = 'catalog' }) {
             <div className="px-5">
               <h1 className="text-3xl font-extrabold text-white mb-1 leading-tight">{activeProduct.title}</h1>
               
-              <div className="flex items-end gap-3 mb-4">
+              {/* Рейтинг под названием */}
+              {avgRating && (
+                <div className="flex items-center gap-1 mb-2">
+                  <span className="text-[#FFD700] text-lg">★</span>
+                  <span className="text-white font-bold">{avgRating}</span>
+                  <span className="text-gray-500 text-sm ml-1">({prodReviews.length} отзывов)</span>
+                </div>
+              )}
+              
+              <div className="flex items-end gap-3 mb-4 mt-2">
                  <p className="text-[#FFD700] text-3xl font-black">{activeProduct.price} ₽</p>
                  {oldPrice && <p className="text-gray-500 line-through text-xl mb-1.5">{oldPrice} ₽</p>}
               </div>
@@ -305,6 +375,60 @@ export default function CatalogPage({ mode = 'catalog' }) {
               >
                 Добавить в корзину
               </button>
+              
+              {/* --- БЛОК ОТЗЫВОВ --- */}
+              <div className="mt-12 border-t border-gray-800 pt-6">
+                <h3 className="text-white font-bold mb-5 text-xl">Отзывы ({prodReviews.length})</h3>
+                
+                {/* Список отзывов */}
+                <div className="flex flex-col gap-4 mb-8">
+                  {prodReviews.length === 0 ? (
+                    <p className="text-gray-500 text-sm">Пока нет отзывов. Будьте первым!</p>
+                  ) : (
+                    prodReviews.slice().reverse().map(rev => (
+                      <div key={rev.id} className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-white font-bold text-sm">{rev.user}</span>
+                          <span className="text-gray-500 text-xs">{rev.date}</span>
+                        </div>
+                        <div className="flex gap-1 mb-2">
+                          {[1, 2, 3, 4, 5].map(star => (
+                            <span key={star} className={`text-sm ${star <= rev.rating ? 'text-[#FFD700]' : 'text-gray-700'}`}>★</span>
+                          ))}
+                        </div>
+                        <p className="text-gray-400 text-sm">{rev.text}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Форма добавления отзыва */}
+                <form onSubmit={submitReview} className="bg-[#1a1a1a] p-5 rounded-2xl border border-gray-800">
+                  <h4 className="text-white font-bold mb-3 text-sm">Оставить свой отзыв</h4>
+                  
+                  <div className="flex gap-2 mb-4">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <button 
+                        key={star} type="button" 
+                        onClick={() => setReviewRating(star)}
+                        className={`text-2xl transition-transform active:scale-90 ${star <= reviewRating ? 'text-[#FFD700]' : 'text-gray-700'}`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+
+                  <textarea 
+                    value={reviewText} onChange={e => setReviewText(e.target.value)}
+                    placeholder="Напишите, что думаете о товаре..."
+                    className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white outline-none focus:border-[#FFD700] mb-3 min-h-[80px] text-sm"
+                  />
+                  <button type="submit" className="w-full bg-gray-800 text-white font-bold py-3 rounded-xl text-sm active:bg-gray-700 transition-colors">
+                    Отправить отзыв
+                  </button>
+                </form>
+              </div>
+
             </div>
           </div>
         );
@@ -316,33 +440,27 @@ export default function CatalogPage({ mode = 'catalog' }) {
             <h2 className="text-xl font-bold text-[#FFD700] mb-4">Редактировать товар</h2>
             <form onSubmit={handleEditSubmit} className="flex flex-col gap-3">
               <input type="text" placeholder="Название" required value={editForm.title} onChange={e => setEditForm({...editForm, title: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
-              
               <div className="flex gap-2">
                 <input type="number" placeholder="Новая цена" required value={editForm.price} onChange={e => setEditForm({...editForm, price: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
                 <input type="number" placeholder="Старая цена" value={editForm.oldPrice} onChange={e => setEditForm({...editForm, oldPrice: e.target.value})} className="flex-1 bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
               </div>
-
               <select value={editForm.mainCat} onChange={e => {
                 const cat = categories.find(c => c.name === e.target.value);
                 setEditForm({...editForm, mainCat: e.target.value, subCat: cat?.subcategories?.[0] || ''});
               }} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]">
                 {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
-              
               {categories.find(c => c.name === editForm.mainCat)?.subcategories?.length > 0 && (
                 <select value={editForm.subCat} onChange={e => setEditForm({...editForm, subCat: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]">
                   {categories.find(c => c.name === editForm.mainCat)?.subcategories.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               )}
-
               <input type="text" placeholder="Вкусы через запятую" value={editForm.flavors} onChange={e => setEditForm({...editForm, flavors: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white outline-none focus:border-[#FFD700]"/>
               <textarea placeholder="Описание" value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} className="bg-black border border-gray-700 rounded-lg p-3 text-white min-h-[80px] outline-none focus:border-[#FFD700]"/>
-              
               <div className="bg-black border border-gray-700 rounded-lg p-3">
                 <label className="text-xs text-gray-400 block mb-1">Новое фото (необязательно):</label>
                 <input type="file" accept="image/jpeg, image/png, image/webp" onChange={e => setEditImage(e.target.files[0])} className="text-xs text-gray-400 file:mr-2 file:py-1 file:px-3 file:rounded-full file:border-0 file:bg-[#FFD700] file:text-black file:font-bold"/>
               </div>
-              
               <div className="flex gap-2 mt-2">
                 <button type="submit" className="flex-1 bg-[#FFD700] text-black font-bold py-3 rounded-lg">Сохранить</button>
                 <button type="button" onClick={() => setEditingProduct(null)} className="flex-1 bg-gray-800 text-white font-bold py-3 rounded-lg">Отмена</button>
