@@ -12,7 +12,6 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const prisma = new PrismaClient();
 
-// ОБА АДМИНА УЖЕ ВШИТЫ В КОД
 const ADMIN_IDS = ['1044141986', '1067205524'];
 const BOT_TOKEN = process.env.bot_token || process.env.BOT_TOKEN;
 
@@ -84,7 +83,6 @@ app.post('/api/admin/categories', adminOnly, upload.single('image'), (req, res) 
   res.json(newCat);
 });
 
-// ОБНОВЛЕНО: Умное редактирование категории с переносом товаров
 app.put('/api/admin/categories/:id', adminOnly, upload.single('image'), async (req, res) => {
   let cats = JSON.parse(fs.readFileSync(categoriesFile, 'utf8'));
   const index = cats.findIndex(c => c.id === req.params.id);
@@ -101,13 +99,11 @@ app.put('/api/admin/categories/:id', adminOnly, upload.single('image'), async (r
   
   fs.writeFileSync(categoriesFile, JSON.stringify(cats, null, 2));
 
-  // Если имя изменилось, перепривязываем все товары
   if (oldName !== newName) {
     const allProducts = await prisma.product.findMany();
     for (const p of allProducts) {
       const parts = (p.category || '').split(' | ');
       if (parts[0] === oldName) {
-        // Сохраняем старую подкатегорию (если была)
         const finalCat = parts[1] ? `${newName} | ${parts[1]}` : newName;
         await prisma.product.update({
           where: { id: p.id },
@@ -189,16 +185,16 @@ app.post('/api/admin/pin/:id', adminOnly, (req, res) => {
   let pinned = JSON.parse(fs.readFileSync(pinnedFile, 'utf8'));
   
   if (pinned.includes(id)) {
-    pinned = pinned.filter(p => p !== id); // Открепить
+    pinned = pinned.filter(p => p !== id); 
   } else {
-    pinned.push(id); // Закрепить
+    pinned.push(id); 
   }
   
   fs.writeFileSync(pinnedFile, JSON.stringify(pinned, null, 2));
   res.json(pinned);
 });
 
-// --- ЗАКАЗЫ И БОТ ---
+// --- ЗАКАЗЫ ---
 app.post('/api/orders', async (req, res) => {
   try {
     const { items, totalAmount, buyerName, deliveryMethod, deliveryAddress, note, username } = req.body;
@@ -206,7 +202,6 @@ app.post('/api/orders', async (req, res) => {
     const itemsText = items.map(item => `▪️ ${item.title} (x${item.quantity}) — ${item.price * item.quantity} ₽`).join('\n');
     const message = `🚨 <b>НОВЫЙ ЗАКАЗ!</b>\n\n👤 <b>Имя:</b> ${buyerName}\n💬 <b>Связь:</b> ${username ? '@' + username : 'Скрыт/Нет юзернейма'}\n🚚 <b>Способ:</b> ${deliveryMethod}\n${deliveryAddress ? `📍 <b>Адрес:</b> ${deliveryAddress}\n` : ''}📝 <b>Примечание:</b> ${note || 'Нет'}\n\n📦 <b>Товары:</b>\n${itemsText}\n\n💰 <b>Сумма к оплате:</b> ${totalAmount} ₽`;
     
-    // Рассылаем всем админам
     for (const adminId of ADMIN_IDS) {
       if (adminId) {
         fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: adminId, text: message, parse_mode: 'HTML' }) }).catch(() => {});
@@ -220,7 +215,10 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'frontend/dist', 'i
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server on port ${PORT}`));
 
+// --- БОТ (ИСПРАВЛЕНО ВОССТАНОВЛЕНИЕМ ССЫЛКИ) ---
+const WEB_APP_URL = 'https://neskshopminiapp-production.up.railway.app';
 let lastUpdateId = 0;
+
 async function pollTelegram() {
   if (!BOT_TOKEN) return;
   try {
