@@ -54,9 +54,9 @@ export default function CartPage() {
   const itemsSum = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const itemsCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   
-  // Проверка: если выбрана доставка, прибавляем 3 рубля
+  // Доставка сейчас бесплатна
   const isDelivery = deliveryMethod === "Доставка курьером";
-  const finalTotal = itemsSum + (isDelivery ? 3 : 0);
+  const finalTotal = itemsSum;
 
   const handleOrderSubmit = async (e) => {
     e.preventDefault();
@@ -70,7 +70,7 @@ export default function CartPage() {
         items: cart,
         totalAmount: finalTotal,
         buyerName,
-        deliveryMethod: isDelivery ? "Доставка курьером (+3₽)" : deliveryMethod,
+        deliveryMethod: isDelivery ? "Доставка курьером (бесплатно)" : deliveryMethod,
         deliveryAddress: isDelivery ? address : null,
         note,
         username: user?.username || ''
@@ -189,7 +189,7 @@ export default function CartPage() {
 
               {isDelivery && (
                 <div className="flex flex-col gap-1.5 animate-fade-in">
-                  <label className="text-sm font-bold text-[#FFD700] px-1">Адрес доставки (Стоимость: +3 ₽)</label>
+                  <label className="text-sm font-bold text-[#FFD700] px-1">Адрес доставки (доставка сейчас бесплатна 😊)</label>
                   <input 
                     type="text" required={isDelivery} value={address} onChange={e => setAddress(e.target.value)}
                     className="bg-neutral-900 border border-[#FFD700]/50 rounded-xl p-4 text-white outline-none focus:border-[#FFD700] transition-colors"
